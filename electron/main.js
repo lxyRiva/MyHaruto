@@ -14,6 +14,11 @@ function defaultDb() {
       { id: 'daily', name: '日常', color: '#3d7ea6', isSpecial: false },
     ],
     focusSessions: [],
+    habits: [],
+    habitRecords: [],
+    importantDays: [],
+    periodRecords: [],
+    sleepRecords: [],
     settings: { theme: 'light' },
   }
 }
@@ -22,8 +27,10 @@ function loadDb() {
   try {
     const db = JSON.parse(fs.readFileSync(dataFile, 'utf-8'))
     // 旧版本数据兼容：补齐缺失的字段
-    if (!db.tags) db.tags = defaultDb().tags
-    if (!db.focusSessions) db.focusSessions = []
+    const defaults = defaultDb()
+    for (const key of Object.keys(defaults)) {
+      if (db[key] === undefined) db[key] = defaults[key]
+    }
     return db
   } catch {
     return defaultDb()

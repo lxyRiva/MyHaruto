@@ -6,6 +6,9 @@ import type { PomodoroState } from './components/PomodoroBar'
 import PomodoroBar from './components/PomodoroBar'
 import Today from './pages/Today'
 import Tasks from './pages/Tasks'
+import Calendar from './pages/Calendar'
+import Habits from './pages/Habits'
+import ImportantDays from './pages/ImportantDays'
 import Placeholder from './pages/Placeholder'
 
 type PageKey =
@@ -15,10 +18,10 @@ type PageKey =
 const NAV: { key: PageKey; icon: string; label: string; soon?: string }[] = [
   { key: 'today', icon: '🏠', label: '今日' },
   { key: 'tasks', icon: '📋', label: '任务' },
-  { key: 'calendar', icon: '📅', label: '月历', soon: 'M3' },
-  { key: 'habits', icon: '✅', label: '习惯打卡', soon: 'M3' },
+  { key: 'calendar', icon: '📅', label: '月历' },
+  { key: 'habits', icon: '✅', label: '习惯打卡' },
   { key: 'stats', icon: '📊', label: '数据统计', soon: 'M4' },
-  { key: 'important', icon: '❤️', label: '重要日', soon: 'M7' },
+  { key: 'important', icon: '❤️', label: '重要日' },
   { key: 'album', icon: '🎬', label: '书影清单', soon: 'V2' },
   { key: 'travel', icon: '✈️', label: '旅游札记', soon: 'V2' },
   { key: 'chat', icon: '💬', label: 'Haruto', soon: 'M5' },
@@ -101,6 +104,45 @@ export default function App() {
   // ---------- 标签 ----------
   const addTag = (name: string, color: string) =>
     setDb((d) => ({ ...d, tags: [...d.tags, { id: uid(), name, color, isSpecial: false }] }))
+
+  // ---------- 习惯 ----------
+  const addHabit = (name: string, icon: string) =>
+    setDb((d) => ({
+      ...d,
+      habits: [...d.habits, { id: uid(), name, icon, monthlyTarget: 20, createdAt: new Date().toISOString() }],
+    }))
+
+  const toggleHabitCheck = (habitId: string, date: string) =>
+    setDb((d) => {
+      const exists = d.habitRecords.some((r) => r.habitId === habitId && r.date === date)
+      return {
+        ...d,
+        habitRecords: exists
+          ? d.habitRecords.filter((r) => !(r.habitId === habitId && r.date === date))
+          : [...d.habitRecords, { id: uid(), habitId, date }],
+      }
+    })
+
+  const setHabitTarget = (habitId: string, n: number) =>
+    setDb((d) => ({ ...d, habits: d.habits.map((h) => (h.id === habitId ? { ...h, monthlyTarget: n } : h)) }))
+
+  // ---------- 重要日 & 生理期 ----------
+  const addImportantDay = (day: { title: string; type: 'birthday' | 'festival' | 'custom'; date: string; repeatYearly: boolean; remindDaysBefore: number; note: string }) =>
+    setDb((d) => ({ ...d, importantDays: [...d.importantDays, { id: uid(), ...day }] }))
+
+  const deleteImportantDay = (id: string) =>
+    setDb((d) => ({ ...d, importantDays: d.importantDays.filter((x) => x.id !== id) }))
+
+  const markPeriod = (date: string, kind: 'start' | 'end') =>
+    setDb((d) => {
+      if (kind === 'start')
+        return { ...d, periodRecords: [...d.periodRecords, { id: uid(), startDate: date, endDate: null }] }
+      // 标记结束：给进行中的记录补上 endDate
+      return {
+        ...d,
+        periodRecords: d.periodRecords.map((r) => (!r.endDate && r.startDate < date ? { ...r, endDate: date } : r)),
+      }
+    })
 
   // ---------- 番茄钟 ----------
   const startPomo = (taskId: string, title: string, minutes: number) =>
@@ -201,6 +243,24 @@ export default function App() {
           <Today {...taskProps} />
         ) : page === 'tasks' ? (
           <Tasks {...taskProps} />
+        ) : page === 'calendar' ? (
+          <Calendar tasks={db.tasks} tags={db.tags} onToggleTask={(id, done) => updateTask(id, { done })} />
+        ) : page === 'habits' ? (
+          <Habits
+            habits={db.habits}
+            habitRecords={db.habitRecords}
+            onAddHabit={addHabit}
+            onToggleCheck={toggleHabitCheck}
+            onSetMonthlyTarget={setHabitTarget}
+          />
+        ) : page === 'important' ? (
+          <ImportantDays
+            importantDays={db.importantDays}
+            periodRecords={db.periodRecords}
+            onAddDay={addImportantDay}
+            onDeleteDay={deleteImportantDay}
+            onPeriodMark={markPeriod}
+          />
         ) : (
           <Placeholder label={PLACEHOLDER_PAGE[page] ?? ''} />
         )}
