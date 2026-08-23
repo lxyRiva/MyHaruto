@@ -1,24 +1,24 @@
-// App = 整体布局：左侧边栏 + 中间内容区 + 右侧详情区（SPEC §5 三栏框架）
-// M2：标签管理、子任务进度、番茄钟、今日专注统计
+// App = 三层结构：L1 图标导航栏 → L2 清单树（任务模块）→ L3 内容区 + 右侧详情
 import { useEffect, useState } from 'react'
-import type { Db, Task, Tag, FocusSession } from './types'
-import type { PomodoroState } from './components/PomodoroBar'
+import type { Db, Task, Tag, Habit, ImportantDay } from './types'
 import PomodoroBar from './components/PomodoroBar'
 import Today from './pages/Today'
 import Tasks from './pages/Tasks'
 import Calendar from './pages/Calendar'
 import Habits from './pages/Habits'
-import ImportantDays from './pages/ImportantDays'
 import Stats from './pages/Stats'
+import ImportantDays from './pages/ImportantDays'
+import PomodoroPage from './pages/PomodoroPage'
 import Placeholder from './pages/Placeholder'
 
 type PageKey =
-  | 'today' | 'tasks' | 'calendar' | 'habits' | 'stats'
+  | 'today' | 'tasks' | 'calendar' | 'habits' | 'stats' | 'focus'
   | 'important' | 'album' | 'travel' | 'chat' | 'town'
 
 const NAV: { key: PageKey; icon: string; label: string; soon?: string }[] = [
   { key: 'today', icon: '🏠', label: '今日' },
   { key: 'tasks', icon: '📋', label: '任务' },
+  { key: 'focus', icon: '⏱', label: '专注' },
   { key: 'calendar', icon: '📅', label: '月历' },
   { key: 'habits', icon: '✅', label: '习惯打卡' },
   { key: 'stats', icon: '📊', label: '数据统计' },
@@ -30,16 +30,21 @@ const NAV: { key: PageKey; icon: string; label: string; soon?: string }[] = [
 ]
 
 const PLACEHOLDER_PAGE: Partial<Record<PageKey, string>> = {
-  calendar: '月历', habits: '习惯打卡', stats: '数据统计',
-  important: '重要日', album: '书影清单', travel: '旅游札记',
-  chat: 'Haruto 聊天', town: '小镇',
+  album: '书影清单', travel: '旅游札记', chat: 'Haruto 聊天', town: '小镇',
 }
 
 const PALETTE = ['#3d7ea6', '#5b8c5a', '#c97b4a', '#8e6bb3', '#b85c5c', '#4a9e9e']
 
-interface Pomo extends PomodoroState {
+interface Pomo {
+  taskId: string
+  title: string
+  mode: 'countdown' | 'stopwatch'
   startedAt: number
   totalMin: number
+  endAt: number // stopwatch 为 0
+  remainingMs: number
+  running: boolean
+  swAccum: number // 正计时累计毫秒（暂停不清零）
 }
 
 function uid() {
@@ -47,12 +52,18 @@ function uid() {
 }
 
 export default function App() {
-  const [db, setDb] = useState<Db>({ tasks: [], tags: [], focusSessions: [], settings: { theme: 'light' } })
+  const [db, setDb] = useState<Db>({ tasks: [], tags: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light' } })
   const [loaded, setLoaded] = useState(false)
   const [page, setPage] = useState<PageKey>('today')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [pomoTarget, setPomoTarget] = useState<Task | null>(null) // 正在选时长的任务
-  const [pomo, setPomo] = useState<Pomo | null>(null) // 进行中的番茄钟
+  const [pomoTarget, setPomoTarget] = useState<Task | null>(null)
+  const [pomo, setPomo] = useState<Pomo | null>(null)
+  // L2 清单树选中项
+  const [activeListId, setActiveListId] = useState<string>('all')
+  // 新建清单表单
+  const [addingList, setAddingList] = useState(false)
+  const [newListName, setNewListName] = useState('')
+  const [newListColor, setNewListColor] = useState(PALETTE[0])
 
   useEffect(() => {
     window.myharuto.getDb().then((d) => {
@@ -77,7 +88,8 @@ export default function App() {
     setDb((d) => ({
       ...d,
       tasks: [
-        { id: uid(), title, description: '', dueDate, done: false, createdAt: new Date().toISOString(), tagId, parentTaskId: null },
+        { id: uid(), title, description: '', dueDate, done: false, createdAt: new Date().toISOString(),
+          tagId, parentTaskId: null, priority: 'none', masterTaskId: null, isPinnedToday: false },
         ...d.tasks,
       ],
     }))
@@ -88,7 +100,7 @@ export default function App() {
       tasks: [
         ...d.tasks,
         { id: uid(), title, description: '', dueDate: null, done: false, createdAt: new Date().toISOString(),
-          tagId: d.tasks.find((t) => t.id === parentId)?.tagId ?? null, parentTaskId: parentId },
+          tagId: d.tasks.find((t) => t.id === parentId)?.tagId ?? null, parentTaskId: parentId, priority: 'none' },
       ],
     }))
 
@@ -96,22 +108,21 @@ export default function App() {
     setDb((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
 
   const deleteTask = (id: string) =>
-    setDb((d) => ({
-      ...d,
-      // 删除主任务时连子任务一起删
-      tasks: d.tasks.filter((t) => t.id !== id && t.parentTaskId !== id),
-    }))
+    setDb((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id && t.parentTaskId !== id) }))
 
-  // ---------- 标签 ----------
+  // ---------- 清单（标签） ----------
   const addTag = (name: string, color: string) =>
     setDb((d) => ({ ...d, tags: [...d.tags, { id: uid(), name, color, isSpecial: false }] }))
 
   // ---------- 习惯 ----------
   const addHabit = (name: string, icon: string) =>
-    setDb((d) => ({
-      ...d,
-      habits: [...d.habits, { id: uid(), name, icon, monthlyTarget: 20, createdAt: new Date().toISOString() }],
-    }))
+    setDb((d) => ({ ...d, habits: [...d.habits, { id: uid(), name, icon, monthlyTarget: 20, createdAt: new Date().toISOString() }] }))
+
+  const updateHabit = (id: string, patch: Partial<Pick<Habit, 'name' | 'icon' | 'monthlyTarget'>>) =>
+    setDb((d) => ({ ...d, habits: d.habits.map((h) => (h.id === id ? { ...h, ...patch } : h)) }))
+
+  const deleteHabit = (id: string) =>
+    setDb((d) => ({ ...d, habits: d.habits.filter((h) => h.id !== id), habitRecords: d.habitRecords.filter((r) => r.habitId !== id) }))
 
   const toggleHabitCheck = (habitId: string, date: string) =>
     setDb((d) => {
@@ -124,12 +135,12 @@ export default function App() {
       }
     })
 
-  const setHabitTarget = (habitId: string, n: number) =>
-    setDb((d) => ({ ...d, habits: d.habits.map((h) => (h.id === habitId ? { ...h, monthlyTarget: n } : h)) }))
-
   // ---------- 重要日 & 生理期 ----------
-  const addImportantDay = (day: { title: string; type: 'birthday' | 'festival' | 'custom'; date: string; repeatYearly: boolean; remindDaysBefore: number; note: string }) =>
+  const addImportantDay = (day: Omit<ImportantDay, 'id'>) =>
     setDb((d) => ({ ...d, importantDays: [...d.importantDays, { id: uid(), ...day }] }))
+
+  const updateImportantDay = (id: string, patch: Partial<ImportantDay>) =>
+    setDb((d) => ({ ...d, importantDays: d.importantDays.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
 
   const deleteImportantDay = (id: string) =>
     setDb((d) => ({ ...d, importantDays: d.importantDays.filter((x) => x.id !== id) }))
@@ -138,7 +149,6 @@ export default function App() {
     setDb((d) => {
       if (kind === 'start')
         return { ...d, periodRecords: [...d.periodRecords, { id: uid(), startDate: date, endDate: null }] }
-      // 标记结束：给进行中的记录补上 endDate
       return {
         ...d,
         periodRecords: d.periodRecords.map((r) => (!r.endDate && r.startDate < date ? { ...r, endDate: date } : r)),
@@ -146,15 +156,34 @@ export default function App() {
     })
 
   // ---------- 番茄钟 ----------
-  const startPomo = (taskId: string, title: string, minutes: number) =>
-    setPomo({ taskId, title, endAt: Date.now() + minutes * 60000, remainingMs: 0, running: true,
-      startedAt: Date.now(), totalMin: minutes })
+  const startPomo = (minutes: number, mode: 'countdown' | 'stopwatch' = 'countdown') => {
+    if (!pomoTarget) return
+    setPomo({
+      taskId: pomoTarget.id, title: pomoTarget.title, mode, startedAt: Date.now(),
+      totalMin: minutes, endAt: mode === 'countdown' ? Date.now() + minutes * 60000 : 0,
+      remainingMs: mode === 'countdown' ? minutes * 60000 : 0, running: true, swAccum: 0,
+    })
+  }
 
   const togglePomo = () =>
     setPomo((p) => {
       if (!p) return p
-      if (p.running) return { ...p, running: false, remainingMs: Math.max(0, p.endAt - Date.now()) }
-      return { ...p, running: true, endAt: Date.now() + p.remainingMs }
+      if (p.running) {
+        // 暂停：记下剩余/累计
+        return {
+          ...p,
+          running: false,
+          remainingMs: p.mode === 'countdown' ? Math.max(0, p.endAt - Date.now()) : 0,
+          swAccum: p.mode === 'stopwatch' ? p.swAccum + (Date.now() - p.startedAt) : 0,
+        }
+      }
+      // 继续：从暂停点接续，不从零开始
+      return {
+        ...p,
+        running: true,
+        endAt: p.mode === 'countdown' ? Date.now() + p.remainingMs : 0,
+        startedAt: p.mode === 'stopwatch' ? Date.now() - p.swAccum : p.startedAt,
+      }
     })
 
   const completePomo = () =>
@@ -172,87 +201,180 @@ export default function App() {
       return null
     })
 
-  // ---------- 派生数据 ----------
+  // ---------- 派生 ----------
   const selected = db.tasks.find((t) => t.id === selectedId) ?? null
   const selectedChildren = selected ? db.tasks.filter((t) => t.parentTaskId === selected.id) : []
   const tagMap = new Map(db.tags.map((t) => [t.id, t]))
-  const childrenOf = (id: string) => db.tasks.filter((t) => t.parentTaskId === id)
   const todayStr = new Date().toISOString().slice(0, 10)
   const todaySessions = db.focusSessions.filter((s) => s.startedAt.slice(0, 10) === todayStr)
   const todayMinutes = todaySessions.reduce((sum, s) => sum + s.minutes, 0)
+  const mainTasks = db.tasks.filter((t) => !t.parentTaskId)
+  const specialTags = db.tags.filter((t) => t.isSpecial)
+  const normalTags = db.tags.filter((t) => !t.isSpecial)
+  const countOf = (id: string) =>
+    id === 'all' ? mainTasks.filter((t) => !t.done).length
+    : id === 'today' ? mainTasks.filter((t) => !t.done && (t.dueDate === todayStr || t.isPinnedToday)).length
+    : mainTasks.filter((t) => t.tagId === id && !t.done).length
 
   const taskProps = {
     tasks: db.tasks,
     tags: db.tags,
-    focusSessions: db.focusSessions,
     onAdd: addTask,
-    onAddSubtask: addSubtask,
     onUpdate: updateTask,
     onDelete: deleteTask,
-    onAddTag: addTag,
     onPomodoro: (t: Task) => setPomoTarget(t),
     selectedId,
     onSelect: (id: string | null) => setSelectedId(id),
   }
 
+  // L2 清单树行
+  const ListRow = ({ id, icon, label, color }: { id: string; icon?: string; label: string; color?: string }) => (
+    <button
+      onClick={() => { setActiveListId(id); setPage('tasks') }}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+        ${activeListId === id && page === 'tasks'
+          ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
+          : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+    >
+      {color
+        ? <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        : <span className="w-4 text-center text-xs shrink-0">{icon}</span>}
+      <span className="truncate">{label}</span>
+      <span className="ml-auto text-[10px] text-neutral-400 tabular-nums">{countOf(id)}</span>
+    </button>
+  )
+
   return (
     <div className="flex h-full">
-      {/* ===== 侧边栏 ===== */}
-      <aside className="w-[220px] shrink-0 flex flex-col border-r border-neutral-200 dark:border-neutral-800 bg-[#f5f5f4] dark:bg-[#121212]">
-        <div className="h-14 flex items-center gap-2 px-5 font-bold tracking-wide">
-          <span className="text-lg">🌙</span> MyHaruto
-        </div>
-        <nav className="flex-1 overflow-y-auto px-3 space-y-0.5">
-          {NAV.map((n) => {
-            const active = page === n.key
-            const disabled = !!n.soon
-            return (
-              <button
-                key={n.key}
-                onClick={() => !disabled && setPage(n.key)}
-                disabled={disabled}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
-                  ${active
-                    ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
-                    : disabled
-                      ? 'text-neutral-400 dark:text-neutral-600 cursor-default'
-                      : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
-              >
-                <span>{n.icon}</span> {n.label}
-                {n.soon && <span className="ml-auto text-[10px] text-neutral-400">{n.soon}</span>}
-              </button>
-            )
-          })}
-        </nav>
-        {/* 今日专注摘要 */}
-        <div className="mx-3 mb-2 rounded-lg bg-black/5 dark:bg-white/5 px-3 py-2 text-xs text-neutral-500">
-          今日专注 <b className="text-haruto-sea">{todayMinutes}</b> 分钟 · 🍅{todaySessions.length}
-        </div>
+      {/* ===== L1：图标导航栏 ===== */}
+      <aside className="w-14 shrink-0 flex flex-col items-center border-r border-neutral-200 dark:border-neutral-800 bg-[#f5f5f4] dark:bg-[#121212] py-3 gap-1">
+        <div className="text-lg mb-2" title="MyHaruto">🌙</div>
+        {NAV.map((n) => {
+          const active = page === n.key
+          const disabled = !!n.soon
+          return (
+            <button
+              key={n.key}
+              onClick={() => !disabled && setPage(n.key)}
+              disabled={disabled}
+              title={n.label}
+              className={`w-10 h-10 grid place-items-center rounded-xl text-base transition-all
+                ${active
+                  ? 'bg-haruto-sea/15 text-haruto-sea scale-105'
+                  : disabled
+                    ? 'text-neutral-300 dark:text-neutral-700 cursor-default'
+                    : 'hover:bg-black/5 dark:hover:bg-white/10'}`}
+            >
+              {n.icon}
+            </button>
+          )
+        })}
+        <div className="flex-1" />
         <button
           onClick={toggleTheme}
-          className="m-3 mt-0 px-3 py-2 rounded-lg text-sm text-left hover:bg-black/5 dark:hover:bg-white/5"
+          title={db.settings.theme === 'dark' ? '切换日间模式' : '切换夜间模式'}
+          className="w-10 h-10 grid place-items-center rounded-xl hover:bg-black/5 dark:hover:bg-white/10"
         >
-          {db.settings.theme === 'dark' ? '☀️ 日间模式' : '🌙 夜间模式'}
+          {db.settings.theme === 'dark' ? '☀️' : '🌙'}
         </button>
       </aside>
 
-      {/* ===== 中栏 ===== */}
+      {/* ===== L2：清单树（仅任务模块，问题9 三层结构） ===== */}
+      {page === 'tasks' && (
+        <aside className="w-52 shrink-0 flex flex-col border-r border-neutral-200 dark:border-neutral-800 bg-[#fafaf9] dark:bg-[#181818] py-4">
+          <div className="px-3 text-xs font-bold text-neutral-400 tracking-widest mb-2">清单</div>
+          <nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
+            <ListRow id="all" icon="🗂" label="全部" />
+            <ListRow id="today" icon="🏠" label="今日" />
+            {specialTags.length > 0 && (
+              <div className="pt-2 pb-0.5 px-3 text-[10px] font-medium text-neutral-400 tracking-wide">我的愿景</div>
+            )}
+            {specialTags.map((t) => (
+              <ListRow key={t.id} label={t.name} color={t.color} id={t.id} />
+            ))}
+            <div className="pt-2 pb-0.5 px-3 text-[10px] font-medium text-neutral-400 tracking-wide">清单</div>
+            {normalTags.map((t) => (
+              <ListRow key={t.id} label={t.name} color={t.color} id={t.id} />
+            ))}
+            {addingList ? (
+              <div className="px-1 pt-1">
+                <input
+                  autoFocus
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newListName.trim()) {
+                      addTag(newListName.trim(), newListColor)
+                      setNewListName(''); setAddingList(false)
+                    }
+                    if (e.key === 'Escape') setAddingList(false)
+                  }}
+                  placeholder="清单名，回车创建"
+                  className="w-full text-xs rounded-lg border border-neutral-300 dark:border-neutral-600
+                    bg-white dark:bg-neutral-900 px-2 py-1.5 outline-none focus:border-haruto-sea"
+                />
+                <div className="flex gap-1 mt-1.5 px-1">
+                  {PALETTE.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setNewListColor(c)}
+                      className={`w-3.5 h-3.5 rounded-full ${newListColor === c ? 'ring-2 ring-offset-1 ring-neutral-400' : ''}`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingList(true)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 mt-1 rounded-lg text-xs text-neutral-400 hover:text-haruto-sea transition-colors"
+              >
+                ＋ 新建清单
+              </button>
+            )}
+          </nav>
+          <div className="mx-2 mt-2 rounded-lg bg-black/5 dark:bg-white/5 px-3 py-2 text-[10px] text-neutral-500">
+            今日专注 <b className="text-haruto-sea">{todayMinutes}</b> 分钟 · 🍅{todaySessions.length}
+          </div>
+        </aside>
+      )}
+
+      {/* ===== L3：内容区 ===== */}
       <main className="flex-1 min-w-0 overflow-y-auto">
         {!loaded ? (
           <div className="h-full grid place-items-center text-neutral-400">加载中…</div>
         ) : page === 'today' ? (
           <Today {...taskProps} />
         ) : page === 'tasks' ? (
-          <Tasks {...taskProps} />
+          <Tasks {...taskProps} activeListId={activeListId} />
+        ) : page === 'focus' ? (
+          <PomodoroPage
+            tasks={mainTasks.filter((t) => !t.done && (!t.dueDate || t.dueDate <= todayStr))}
+            selectedTaskId={pomoTarget?.id ?? null}
+            onSelectTask={(id) => setPomoTarget(db.tasks.find((t) => t.id === id) ?? null)}
+            pomo={pomo}
+            onStart={startPomo}
+            onToggle={togglePomo}
+            onAbandon={() => { setPomo(null); setPomoTarget(null) }}
+            onComplete={completePomo}
+            todaySessions={todaySessions}
+            titleOf={(id) => db.tasks.find((t) => t.id === id)?.title ?? '未知任务'}
+          />
         ) : page === 'calendar' ? (
-          <Calendar tasks={db.tasks} tags={db.tags} onToggleTask={(id, done) => updateTask(id, { done })} />
+          <Calendar
+            tasks={db.tasks}
+            tags={db.tags}
+            onToggleTask={(id, done) => updateTask(id, { done })}
+            onAddTask={(title, date) => addTask(title, date, null)}
+          />
         ) : page === 'habits' ? (
           <Habits
             habits={db.habits}
             habitRecords={db.habitRecords}
             onAddHabit={addHabit}
+            onUpdateHabit={updateHabit}
+            onDeleteHabit={deleteHabit}
             onToggleCheck={toggleHabitCheck}
-            onSetMonthlyTarget={setHabitTarget}
           />
         ) : page === 'stats' ? (
           <Stats focusSessions={db.focusSessions} sleepRecords={db.sleepRecords} tasks={db.tasks} tags={db.tags} />
@@ -261,6 +383,7 @@ export default function App() {
             importantDays={db.importantDays}
             periodRecords={db.periodRecords}
             onAddDay={addImportantDay}
+            onUpdateDay={updateImportantDay}
             onDeleteDay={deleteImportantDay}
             onPeriodMark={markPeriod}
           />
@@ -269,7 +392,7 @@ export default function App() {
         )}
       </main>
 
-      {/* ===== 右栏：任务详情（SPEC §5.2：子任务/描述/AI留言/🍅） ===== */}
+      {/* ===== 右栏：任务详情 ===== */}
       {selected && (
         <aside className="w-[320px] shrink-0 border-l border-neutral-200 dark:border-neutral-800 p-5 overflow-y-auto">
           <div className="flex items-start justify-between gap-2">
@@ -296,7 +419,7 @@ export default function App() {
             {selected.dueDate ? `📅 ${selected.dueDate}` : '无日期'} · 创建于 {selected.createdAt.slice(0, 10)}
           </p>
 
-          {/* 子任务（SPEC F1：单击主任务展开，这里固定在详情栏，M2.1 再做列表内折叠展开） */}
+          {/* 子任务（每条可单独开番茄钟，问题2） */}
           <div className="mt-5">
             <div className="flex justify-between text-xs font-medium text-neutral-500 mb-1.5">
               <span>子任务</span>
@@ -305,15 +428,22 @@ export default function App() {
               )}
             </div>
             {selectedChildren.map((c) => (
-              <label key={c.id} className="flex items-center gap-2.5 py-1.5 cursor-pointer">
+              <div key={c.id} className="group flex items-center gap-2.5 py-1.5">
                 <input
                   type="checkbox"
                   checked={c.done}
                   onChange={(e) => updateTask(c.id, { done: e.target.checked })}
-                  className="accent-haruto-sea w-3.5 h-3.5"
+                  className="accent-haruto-sea w-3.5 h-3.5 shrink-0"
                 />
-                <span className={`text-sm ${c.done ? 'line-through text-neutral-400' : ''}`}>{c.title}</span>
-              </label>
+                <span className={`flex-1 text-sm truncate ${c.done ? 'line-through text-neutral-400' : ''}`}>{c.title}</span>
+                <button
+                  onClick={() => setPomoTarget(c)}
+                  className="text-xs opacity-40 hover:opacity-100 transition-opacity shrink-0"
+                  title="子任务单独专注"
+                >
+                  🍅
+                </button>
+              </div>
             ))}
             <input
               placeholder="+ 添加子任务，回车保存"
@@ -364,12 +494,12 @@ export default function App() {
         </aside>
       )}
 
-      {/* 番茄钟（选时长 / 计时中） */}
+      {/* 番茄钟浮动条 */}
       {(pomoTarget || pomo) && (
         <PomodoroBar
           task={pomoTarget}
           state={pomo}
-          onStart={(taskId, title, minutes) => { startPomo(taskId, title, minutes); setPomoTarget(null) }}
+          onStart={(minutes, mode) => startPomo(minutes, mode)}
           onToggle={togglePomo}
           onAbandon={() => { setPomo(null); setPomoTarget(null) }}
           onComplete={completePomo}

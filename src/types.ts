@@ -14,6 +14,9 @@ export interface Task {
   createdAt: string
   tagId: string | null
   parentTaskId: string | null // 子任务指向主任务
+  priority?: 'none' | 'low' | 'mid' | 'high' // 优先级旗帜
+  masterTaskId?: string | null // 关联归属：本任务及其子树专注时长并入该主任务
+  isPinnedToday?: boolean // 手动置顶进今日
 }
 
 export interface FocusSession {
@@ -45,6 +48,7 @@ export interface ImportantDay {
   repeatYearly: boolean
   remindDaysBefore: number
   note: string
+  archived?: boolean // true = 已归档，主列表隐藏
 }
 
 export interface PeriodRecord {

@@ -2,7 +2,7 @@
  * Stats 数据统计页（飞书极简风 + 暗色适配）
  *
  * 1. 顶部「日 / 月 / 年」三段切换（海蓝选中）
- * 2. 番茄钟饼图：各任务专注时长占比（图例右侧，色块取任务标签色）
+ * 2. 番茄钟饼图：各任务专注时长占比（图例右侧，色块取固定「名家色板」按序循环分配）
  *    - 日视图：按具体任务（含子任务）统计
  *    - 月/年视图：仅按主任务统计，子任务时长沿 parentTaskId 链向上归并
  * 3. 月度热力图（GitHub 风格）：当月每天专注分钟，海蓝色系渐变
@@ -11,15 +11,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import * as echarts from 'echarts';
-// 项目共享类型：Task（parentTaskId 为空表示主任务）、Tag（color 用于饼图色块）、
+// 项目共享类型：Task（parentTaskId 为空表示主任务）、Tag、
 // FocusSession（番茄钟专注记录，startedAt 为 ISO 字符串）、SleepRecord（date/bedtime）
 import type { Task, Tag, FocusSession, SleepRecord } from '../types';
 
 /* ==================== 常量与工具函数 ==================== */
 /** 海蓝主题色（与全局强调色一致） */
 const OCEAN_BLUE = '#3d7ea6';
-/** 无标签（或任务已删除）时饼图的回退色，中性灰 */
-const FALLBACK_COLOR = '#6b7280';
+/**
+ * 名家色板：莫奈 / 梵高灵感的和谐低饱和色板。
+ * 饼图不再使用标签色（标签色易冲突刺眼），改用此固定色板按序循环分配。
+ */
+const MASTER_PALETTE = [
+  '#7B9E89', // 鼠尾草绿（莫奈睡莲）
+  '#C3AED6', // 淡藤紫
+  '#E8A87C', // 落日杏
+  '#A8C5DA', // 天光蓝
+  '#D4A373', // 麦秆棕
+  '#9A8C98', // 灰紫
+  '#B5C99A', // 嫩芽绿
+  '#E5989B', // 桃粉
+  '#84A59D', // 青灰绿
+  '#F2CC8F', // 向日葵黄（梵高）
+] as const;
 /** 图表主文字色（图例等，明暗模式通用） */
 const TEXT_PRIMARY = '#666';
 /** 图表次级文字色（坐标轴等） */
@@ -99,11 +113,12 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
   /** 任务索引表，便于按 id 查找 */
   const taskMap = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 
-  /** 取任务标签色，无标签（或任务已删除）时回退为中性灰 */
-  const tagColorOf = (task: Task | undefined): string =>
-    (task && tags.find((tag) => tag.id === task.tagId)?.color) || FALLBACK_COLOR;
-
-  /** 沿 parentTaskId 链向上找到最顶层主任务 id（带环保护） */
+  /**
+   * 归属主任务 id（带环保护）：
+   * 1) 先沿 parentTaskId 子任务链上溯到顶
+   * 2) 到顶后若该任务关联了主任务（masterTaskId），跳过去继续归并
+   *    —— 保证"任务被关联/迁移时，历史专注时长跟着并入主任务"（SPEC F4 铁律）
+   */
   const rootTaskIdOf = (taskId: string): string => {
     let current = taskMap.get(taskId);
     let rootId = taskId;
@@ -112,6 +127,10 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
       visited.add(current.parentTaskId);
       rootId = current.parentTaskId;
       current = taskMap.get(current.parentTaskId);
+    }
+    const master = current?.masterTaskId;
+    if (master && !visited.has(master)) {
+      return rootTaskIdOf(master);
     }
     return rootId;
   };
@@ -131,6 +150,7 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
    * 饼图数据：
    * - 日视图：按具体任务（含子任务）逐个统计
    * - 月/年视图：子任务时长沿链并入最顶层主任务
+   * - 配色：抛弃标签色，改用名家色板按序循环分配（时长降序后依次取色）
    */
   const pieData = useMemo(() => {
     const minutesByTask = new Map<string, number>();
@@ -140,11 +160,15 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
     }
     return Array.from(minutesByTask.entries())
       .sort((a, b) => b[1] - a[1]) // 按时长降序，图例更易读
-      .map(([taskId, value]) => {
+      .map(([taskId, value], index) => {
         const task = taskMap.get(taskId);
-        return { name: task?.title ?? '未知任务', value, itemStyle: { color: tagColorOf(task) } };
+        return {
+          name: task?.title ?? '未知任务',
+          value,
+          itemStyle: { color: MASTER_PALETTE[index % MASTER_PALETTE.length] }, // 名家色板循环
+        };
       });
-  }, [periodSessions, viewMode, taskMap, tags]);
+  }, [periodSessions, viewMode, taskMap]);
 
   /* ---------- 2. 月热力图数据 ---------- */
   /** 本月每天的专注总分钟数（热力图固定展示「当月」，与顶部切换无关） */
@@ -231,10 +255,13 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
       const weekCount = Math.ceil((firstDayOffset + daysInMonth) / 7);
 
       // 单元格数据：[第几周(列), 行下标(已翻转让周一对齐 y 轴顶部), 分钟数, 几号]
+      // 修复：仅收录分钟数 > 0 的格子，0 值格子不进 data（不渲染），
+      // 避免无记录的日期也被 visualMap 按 min=0 染上底色。
       const cells: Array<[number, number, number, number]> = [];
       let maxDayMinutes = 0;
       for (let day = 1; day <= daysInMonth; day++) {
         const minutes = monthMinutesByDay.get(`${monthStr}-${pad2(day)}`) ?? 0;
+        if (minutes <= 0) continue; // 无记录的日期直接跳过，不生成格子
         maxDayMinutes = Math.max(maxDayMinutes, minutes);
         const weekday = (new Date(year, monthIndex, day).getDay() + 6) % 7; // 0 = 周一
         const weekIndex = Math.floor((firstDayOffset + day - 1) / 7);
@@ -277,7 +304,7 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
           bottom: 0,
           text: ['多', '少'],
           textStyle: { color: TEXT_SECONDARY, fontSize: 11 },
-          inRange: { color: ['#e8f1f7', '#c3d9e8', '#94bcd6', '#5f94b8', OCEAN_BLUE] }, // 海蓝渐变，0 最浅
+          inRange: { color: ['#e8f1f7', '#c3d9e8', '#94bcd6', '#5f94b8', OCEAN_BLUE] }, // 海蓝渐变（0 值格子不进 data，不参与渲染）
         },
         series: [
           {

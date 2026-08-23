@@ -1,28 +1,114 @@
-// 习惯打卡页：周/月/年三视图（SPEC F3，参考滴答清单习惯模块 + 自定义月视图）
-import { useState } from 'react'
+// 习惯打卡页（重写版）：仅 周 / 月 双视图
+// - 周视图：顶部周一~日横向星期栏（今日海蓝高亮+下划线），习惯为行、星期为列的打卡矩阵
+//   打卡格统一 w-8 h-8 rounded-full：未打 = 空心浅灰描边圆，已打 = 实心绿(#5b8c5a)+白✓
+// - 月视图：像一张表格——最左列竖向 1~31 日期，每个习惯一列（竖排名 + 上=月目标/下=当月已打数）
+// - 习惯行右键菜单：编辑名称 / 更换图标 / 设置月目标 / 删除（全部行内编辑，Electron 下禁用 prompt）
+import { useEffect, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { Habit, HabitRecord } from '../types'
 
-function fmtDate(d: Date) {
+// 预设 emoji 图标组（新建表单 & 更换图标面板共用）
+const PRESET_ICONS = ['💧', '🏃', '📖', '🧘', '✍️', '🎯', '🥗', '😴', '🎧']
+
+// Date → 'YYYY-MM-DD'（本地时区，避免 toISOString 的 UTC 偏移问题）
+function fmtDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const EMOJIS = ['💧', '🏃', '📖', '🧘', '✍️', '🎯', '🥗', '😴']
+// 右键菜单形态：root=主菜单 / icon=图标选择面板 / target=月目标输入
+interface MenuState {
+  habitId: string
+  x: number
+  y: number
+  mode: 'root' | 'icon' | 'target'
+}
+
+// 右键菜单里的单个选项按钮
+function MenuItem({ children, onClick, danger }: { children: ReactNode; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-1.5 text-xs transition-colors
+        ${
+          danger
+            ? 'text-red-500 hover:bg-red-500/10'
+            : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/10'
+        }`}
+    >
+      {children}
+    </button>
+  )
+}
 
 export default function Habits({
-  habits, habitRecords, onAddHabit, onToggleCheck, onSetMonthlyTarget,
+  habits,
+  habitRecords,
+  onAddHabit,
+  onUpdateHabit,
+  onDeleteHabit,
+  onToggleCheck,
 }: {
   habits: Habit[]
   habitRecords: HabitRecord[]
   onAddHabit: (name: string, icon: string) => void
-  onToggleCheck: (habitId: string, date: string) => void
-  onSetMonthlyTarget: (habitId: string, n: number) => void
+  onUpdateHabit: (id: string, patch: Partial<Pick<Habit, 'name' | 'icon' | 'monthlyTarget'>>) => void
+  onDeleteHabit: (id: string) => void
+  onToggleCheck: (habitId: string, date: string) => void // 幂等切换打卡
 }) {
-  const [view, setView] = useState<'week' | 'month' | 'year'>('week')
+  /* ---------- 视图与新建表单 ---------- */
+  const [view, setView] = useState<'week' | 'month'>('week')
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
-  const [newIcon, setNewIcon] = useState(EMOJIS[0])
+  const [newIcon, setNewIcon] = useState(PRESET_ICONS[0])
+  const [newTarget, setNewTarget] = useState('20') // 新习惯月目标，默认 20
+
+  /* ---------- 行内编辑状态（名称 / 月目标，月视图表头共用） ---------- */
+  const [editingNameId, setEditingNameId] = useState<string | null>(null)
+  const [nameDraft, setNameDraft] = useState('')
+  const [editingTargetId, setEditingTargetId] = useState<string | null>(null)
+  const [targetDraft, setTargetDraft] = useState('')
+
+  /* ---------- 右键菜单 ---------- */
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const [customIcon, setCustomIcon] = useState('') // 图标面板的自定义输入
+  const [menuTargetDraft, setMenuTargetDraft] = useState('') // 菜单内月目标输入
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  /* ---------- 新建时自定义月目标的落地 ----------
+     onAddHabit 只收 (name, icon)；创建成功后 habits 会多出一个新 id，
+     这里对该新习惯补一次 onUpdateHabit，把表单里填的月目标写进去 */
+  const pendingTargetRef = useRef<number | null>(null)
+  const knownIdsRef = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const prev = knownIdsRef.current
+    const ids = new Set(habits.map((h) => h.id))
+    knownIdsRef.current = ids
+    const pending = pendingTargetRef.current
+    if (pending == null || prev == null) return
+    pendingTargetRef.current = null
+    const fresh = habits.find((h) => !prev.has(h.id))
+    if (fresh && fresh.monthlyTarget !== pending) onUpdateHabit(fresh.id, { monthlyTarget: pending })
+  }, [habits, onUpdateHabit])
+
+  /* ---------- 点击菜单外 / Esc 关闭右键菜单 ---------- */
+  useEffect(() => {
+    if (!menu) return
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenu(null)
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [menu])
 
   const now = new Date()
+  const todayStr = fmtDate(now)
   const checked = (habitId: string, date: string) =>
     habitRecords.some((r) => r.habitId === habitId && r.date === date)
 
@@ -47,88 +133,226 @@ export default function Habits({
     return n
   }
 
+  // 当月已打数
   const monthCount = (habitId: string) =>
-    habitRecords.filter((r) => r.habitId === habitId && r.date.slice(0, 7) === fmtDate(now).slice(0, 7)).length
+    habitRecords.filter((r) => r.habitId === habitId && r.date.slice(0, 7) === todayStr.slice(0, 7)).length
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const yearCount = (habitId: string) =>
-    habitRecords.filter((r) => r.habitId === habitId && r.date.slice(0, 4) === String(now.getFullYear())).length
+  const monthPrefix = todayStr.slice(0, 8) // 'YYYY-MM-'，用于拼当月日期
+
+  /* ---------- 操作 ---------- */
+  // 在习惯行/表头上右键：弹出自定义菜单（阻止浏览器默认菜单）
+  const openMenu = (e: ReactMouseEvent, habitId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenu({
+      habitId,
+      x: Math.max(8, Math.min(e.clientX, window.innerWidth - 230)), // 防溢出屏幕
+      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 250)),
+      mode: 'root',
+    })
+  }
+
+  // 提交名称行内编辑（Enter / 失焦）
+  const commitName = () => {
+    if (editingNameId && nameDraft.trim()) onUpdateHabit(editingNameId, { name: nameDraft.trim() })
+    setEditingNameId(null)
+  }
+  // 提交月视图表头的月目标行内编辑（Enter / 失焦）
+  const commitTarget = () => {
+    const n = Math.floor(Number(targetDraft))
+    if (editingTargetId && n > 0) onUpdateHabit(editingTargetId, { monthlyTarget: n })
+    setEditingTargetId(null)
+  }
+  // 提交右键菜单里的月目标输入
+  const applyMenuTarget = () => {
+    if (!menu) return
+    const n = Math.floor(Number(menuTargetDraft))
+    if (n > 0) onUpdateHabit(menu.habitId, { monthlyTarget: n })
+    setMenu(null)
+  }
+  // 创建新习惯（名称框回车触发）
+  const submitNewHabit = () => {
+    const name = newName.trim()
+    if (!name) return
+    onAddHabit(name, newIcon)
+    const n = Math.floor(Number(newTarget))
+    pendingTargetRef.current = n > 0 ? n : null // 创建后由上面的 effect 补写
+    setNewName('')
+    setNewTarget('20')
+    setNewIcon(PRESET_ICONS[0])
+    setAdding(false)
+  }
+
+  const menuHabit = menu ? habits.find((h) => h.id === menu.habitId) : undefined
+  const canCreate = newName.trim() !== ''
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">习惯打卡</h1>
-        {/* 周/月/年 三段切换 */}
-        <div className="flex rounded-lg bg-black/5 dark:bg-white/5 p-0.5 text-xs">
-          {(['week', 'month', 'year'] as const).map((v) => (
+      {/* ===== 顶栏：标题 + 新习惯入口 + 周/月切换 ===== */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h1 className="text-xl font-bold shrink-0">习惯打卡</h1>
+          <span className="text-[10px] text-neutral-400 truncate">右键习惯可编辑 / 换图标 / 删除</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {!adding && (
             <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-3 py-1.5 rounded-md ${view === v ? 'bg-haruto-sea text-white' : 'text-neutral-500'}`}
+              onClick={() => setAdding(true)}
+              className="text-xs px-3 py-1.5 rounded-full border border-dashed border-neutral-300 dark:border-neutral-600
+                text-neutral-400 hover:border-haruto-sea hover:text-haruto-sea transition-colors"
             >
-              {{ week: '周', month: '月', year: '年' }[v]}
+              ＋ 新习惯
             </button>
-          ))}
+          )}
+          <div className="flex rounded-lg bg-black/5 dark:bg-white/5 p-0.5 text-xs">
+            {(['week', 'month'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-3 py-1.5 rounded-md transition-colors
+                  ${view === v ? 'bg-haruto-sea text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+              >
+                {{ week: '周', month: '月' }[v]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* 新习惯表单 */}
-      <div className="mt-4">
-        {adding ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex gap-1">
-              {EMOJIS.map((e) => (
-                <button key={e} onClick={() => setNewIcon(e)}
-                  className={`w-8 h-8 rounded-lg text-lg ${newIcon === e ? 'bg-haruto-sea/15 ring-1 ring-haruto-sea' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
-                >{e}</button>
-              ))}
-            </div>
-            <input
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newName.trim()) {
-                  onAddHabit(newName.trim(), newIcon)
-                  setNewName(''); setAdding(false)
-                }
-                if (e.key === 'Escape') setAdding(false)
-              }}
-              placeholder="习惯名称，回车创建"
-              className="flex-1 min-w-40 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700
-                bg-white dark:bg-neutral-900 px-3 py-2 outline-none focus:border-haruto-sea"
-            />
-          </div>
-        ) : (
-          <button onClick={() => setAdding(true)}
-            className="text-xs px-3 py-1.5 rounded-full border border-dashed border-neutral-300 dark:border-neutral-600 text-neutral-400 hover:border-haruto-sea hover:text-haruto-sea"
-          >
-            ＋ 新习惯
-          </button>
-        )}
-      </div>
-
-      {habits.length === 0 ? (
-        <div className="py-20 text-center text-sm text-neutral-400">创建你的第一个习惯</div>
-      ) : view === 'week' ? (
-        /* ===== 周视图 ===== */
-        <div className="mt-4 rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-          <div className="grid grid-cols-[160px_repeat(7,1fr)] bg-black/5 dark:bg-white/5 text-xs text-neutral-400 text-center">
-            <div className="py-2" />
-            {weekDays.map((d, i) => (
-              <div key={i} className={`py-2 ${fmtDate(d) === fmtDate(now) ? 'text-haruto-sea font-bold' : ''}`}>
-                {'一二三四五六日'[i]}<br />
-                <span className="text-[10px] opacity-70">{d.getMonth() + 1}/{d.getDate()}</span>
-              </div>
+      {/* ===== 新习惯行内表单：emoji 选择 + 名称 + 月目标，回车创建 ===== */}
+      {adding && (
+        <div
+          className="task-item mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border
+            border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-3"
+        >
+          <div className="flex flex-wrap gap-1">
+            {PRESET_ICONS.map((e) => (
+              <button
+                key={e}
+                onClick={() => setNewIcon(e)}
+                title={`图标 ${e}`}
+                className={`w-8 h-8 rounded-lg text-base grid place-items-center transition-all
+                  ${newIcon === e ? 'bg-haruto-sea/15 ring-1 ring-haruto-sea' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
+              >
+                {e}
+              </button>
             ))}
           </div>
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitNewHabit()
+              if (e.key === 'Escape') setAdding(false)
+            }}
+            placeholder="习惯名称，回车创建"
+            className="flex-1 min-w-40 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700
+              bg-transparent px-3 py-2 outline-none focus:border-haruto-sea"
+          />
+          <label className="flex items-center gap-1.5 text-xs text-neutral-400 select-none">
+            月目标
+            <input
+              type="number"
+              min={1}
+              value={newTarget}
+              onChange={(e) => setNewTarget(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitNewHabit()
+              }}
+              className="w-14 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent
+                px-2 py-1.5 text-xs text-center tabular-nums outline-none focus:border-haruto-sea"
+            />
+            天
+          </label>
+          <button
+            onClick={submitNewHabit}
+            className={`text-xs px-4 py-2 rounded-lg font-medium transition-colors
+              ${
+                canCreate
+                  ? 'bg-haruto-sea text-white hover:opacity-90'
+                  : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed'
+              }`}
+          >
+            创建
+          </button>
+          <button
+            onClick={() => setAdding(false)}
+            className="text-xs px-2 py-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
+          >
+            取消
+          </button>
+        </div>
+      )}
+
+      {habits.length === 0 ? (
+        /* ===== 空状态 ===== */
+        <div className="mt-4 py-24 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 grid place-items-center">
+          <div className="text-center select-none">
+            <div className="text-4xl opacity-70">🌱</div>
+            <div className="mt-3 text-sm text-neutral-400">还没有习惯</div>
+            <div className="mt-1 text-xs text-neutral-300 dark:text-neutral-600">点右上「＋ 新习惯」，从一件小事开始</div>
+          </div>
+        </div>
+      ) : view === 'week' ? (
+        /* ===== 周视图：习惯为行 × 星期一~日为列，白底浅色、留白充足 ===== */
+        <div className="mt-4 select-none rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+          {/* 星期栏：今天海蓝高亮 + 下划线 */}
+          <div className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))] bg-black/[0.03] dark:bg-white/5">
+            <div className="px-4 py-3 text-[10px] text-neutral-400">习惯 / 星期</div>
+            {weekDays.map((d, i) => {
+              const isToday = fmtDate(d) === todayStr
+              return (
+                <div
+                  key={i}
+                  className={`py-2 text-center border-b-2 ${isToday ? 'border-haruto-sea' : 'border-transparent'}`}
+                >
+                  <div className={`text-xs ${isToday ? 'text-haruto-sea font-bold' : 'text-neutral-400'}`}>
+                    {'一二三四五六日'[i]}
+                  </div>
+                  <div
+                    className={`mt-0.5 text-[10px] tabular-nums ${
+                      isToday ? 'text-haruto-sea font-semibold' : 'text-neutral-400/80'
+                    }`}
+                  >
+                    {d.getMonth() + 1}/{d.getDate()}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {/* 习惯行 */}
           {habits.map((h) => (
-            <div key={h.id} className="grid grid-cols-[160px_repeat(7,1fr)] border-t border-neutral-100 dark:border-neutral-800/60 items-center">
-              <div className="px-3 py-2.5 text-sm flex items-center gap-2">
-                <span>{h.icon}</span>
-                <span className="truncate">{h.name}</span>
-                <span className="text-[10px] text-neutral-400 shrink-0">🔥{streak(h.id)}</span>
+            <div
+              key={h.id}
+              onContextMenu={(e) => openMenu(e, h.id)}
+              className="grid grid-cols-[180px_repeat(7,minmax(0,1fr))] border-t border-neutral-100 dark:border-neutral-800/60
+                items-center hover:bg-black/[0.015] dark:hover:bg-white/[0.02] transition-colors"
+            >
+              <div className="px-4 py-2.5 flex items-center gap-2 min-w-0">
+                <span className="text-base shrink-0">{h.icon}</span>
+                {editingNameId === h.id ? (
+                  /* 名称行内编辑 */
+                  <input
+                    autoFocus
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onBlur={commitName}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitName()
+                      if (e.key === 'Escape') setEditingNameId(null)
+                    }}
+                    className="min-w-0 flex-1 text-xs rounded-md border border-haruto-sea bg-transparent px-2 py-1 outline-none"
+                  />
+                ) : (
+                  <span className="truncate text-sm">{h.name}</span>
+                )}
+                <span className="shrink-0 text-[10px] text-neutral-400 tabular-nums" title="连续打卡天数">
+                  🔥{streak(h.id)}
+                </span>
               </div>
+              {/* 打卡格：空心描边圆 → 实心绿 + 白✓ */}
               {weekDays.map((d, i) => {
                 const ds = fmtDate(d)
                 const on = checked(h.id, ds)
@@ -136,10 +360,14 @@ export default function Habits({
                   <button
                     key={i}
                     onClick={() => onToggleCheck(h.id, ds)}
-                    className={`h-8 w-8 mx-auto rounded-full flex items-center justify-center text-xs transition-all
-                      ${on ? 'bg-[#5b8c5a] text-white' : 'bg-neutral-200 dark:bg-neutral-700 text-transparent'}
-                      hover:scale-110 active:scale-95`}
-                    title={ds}
+                    title={`${h.name} · ${ds}`}
+                    className={`w-8 h-8 mx-auto rounded-full grid place-items-center text-xs
+                      transition-all duration-150 hover:scale-110 active:scale-95
+                      ${
+                        on
+                          ? 'bg-[#5b8c5a] text-white'
+                          : 'bg-transparent border border-neutral-300 dark:border-neutral-600 text-transparent hover:border-neutral-400 dark:hover:border-neutral-500'
+                      }`}
                   >
                     ✓
                   </button>
@@ -148,65 +376,230 @@ export default function Habits({
             </div>
           ))}
         </div>
-      ) : view === 'month' ? (
-        /* ===== 月视图：竖排天数 × 竖排习惯名（SPEC 自定义设计） ===== */
-        <div className="mt-4 overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
-          <div className="grid grid-cols-[44px_repeat(habits.length,minmax(56px,1fr))] bg-black/5 dark:bg-white/5">
-            <div className="py-2 text-[10px] text-neutral-400 text-center">日</div>
-            {habits.map((h) => (
-              <div key={h.id} className="py-2 flex flex-col items-center gap-0.5">
-                <span className="text-sm">{h.icon}</span>
-                <span className="[writing-mode:vertical-rl] text-[10px] text-neutral-500 max-h-14 overflow-hidden">{h.name}</span>
-                <button
-                  onClick={() => {
-                    const n = Number(prompt(`「${h.name}」的月目标（当前 ${h.monthlyTarget}）`, String(h.monthlyTarget)))
-                    if (n && n > 0) onSetMonthlyTarget(h.id, Math.floor(n))
-                  }}
-                  className="text-[10px] text-[#e07a5f] font-bold hover:underline"
-                  title="点击修改月目标"
-                >
-                  {h.monthlyTarget}
-                </button>
-                <span className="text-[10px] text-[#6a994e] font-bold">{monthCount(h.id)}</span>
-              </div>
-            ))}
-          </div>
-          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
-            const ds = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-            return (
-              <div key={day} className="grid grid-cols-[44px_repeat(habits.length,minmax(56px,1fr))] border-t border-neutral-100 dark:border-neutral-800/60">
-                <div className={`py-1.5 text-[10px] text-center ${ds === fmtDate(now) ? 'text-haruto-sea font-bold' : 'text-neutral-400'}`}>{day}</div>
-                {habits.map((h) => {
-                  const on = checked(h.id, ds)
-                  return (
-                    <button
-                      key={h.id}
-                      onClick={() => onToggleCheck(h.id, ds)}
-                      className={`h-5 w-5 mx-auto my-1 rounded transition-all
-                        ${on ? 'bg-[#5b8c5a]' : 'bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10'}`}
-                      title={`${h.name} ${ds}`}
-                    />
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
       ) : (
-        /* ===== 年视图：极简透明边框表格 ===== */
-        <div className="mt-4 rounded-xl border border-neutral-200/60 dark:border-neutral-700/60 overflow-hidden">
-          <div className="grid grid-cols-[1fr_100px_100px] bg-black/5 dark:bg-white/5 text-xs text-neutral-400">
-            <div className="px-3 py-2">习惯</div>
-            <div className="py-2 text-center">已打卡</div>
-            <div className="py-2 text-center">目标打卡</div>
-          </div>
-          {habits.map((h) => (
-            <div key={h.id} className="grid grid-cols-[1fr_100px_100px] border-t border-neutral-100 dark:border-neutral-800/40 text-sm">
-              <div className="px-3 py-2.5 flex items-center gap-2"><span>{h.icon}</span>{h.name}</div>
-              <div className="py-2.5 text-center text-[#6a994e] font-bold">{yearCount(h.id)}</div>
-              <div className="py-2.5 text-center text-[#e07a5f] font-bold">{h.monthlyTarget * 12}</div>
+        /* ===== 月视图：最左列竖向 1~31 日期 × 每习惯一列（竖排名 + 目标/已打叠放） ===== */
+        <div className="mt-4 select-none rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-x-auto">
+          <div className="min-w-max">
+            {/* 表头行：每个习惯一列 */}
+            <div
+              className="grid bg-black/[0.03] dark:bg-white/5"
+              style={{ gridTemplateColumns: `40px repeat(${habits.length}, minmax(56px, 1fr))` }}
+            >
+              <div className="py-2 text-[10px] text-neutral-400 text-center">日</div>
+              {habits.map((h) => (
+                <div
+                  key={h.id}
+                  onContextMenu={(e) => openMenu(e, h.id)}
+                  title="右键可编辑"
+                  className="py-2.5 px-1 flex flex-col items-center gap-1"
+                >
+                  <span className="text-base leading-none">{h.icon}</span>
+                  {editingNameId === h.id ? (
+                    /* 名称行内编辑（竖排名换成普通小输入框） */
+                    <input
+                      autoFocus
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onBlur={commitName}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitName()
+                        if (e.key === 'Escape') setEditingNameId(null)
+                      }}
+                      className="w-12 text-[10px] rounded border border-haruto-sea bg-transparent px-1 py-0.5 text-center outline-none"
+                    />
+                  ) : (
+                    <span className="max-h-16 overflow-hidden [writing-mode:vertical-rl] text-[10px] leading-tight text-neutral-500 dark:text-neutral-400">
+                      {h.name}
+                    </span>
+                  )}
+                  {editingTargetId === h.id ? (
+                    /* 月目标行内小输入框：回车/失焦保存 */
+                    <input
+                      autoFocus
+                      type="number"
+                      min={1}
+                      value={targetDraft}
+                      onChange={(e) => setTargetDraft(e.target.value)}
+                      onBlur={commitTarget}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitTarget()
+                        if (e.key === 'Escape') setEditingTargetId(null)
+                      }}
+                      className="w-12 rounded border border-haruto-sea bg-transparent px-1 py-0.5 text-[11px] text-center tabular-nums text-[#e07a5f] outline-none"
+                    />
+                  ) : (
+                    /* 上：月目标（橙红，点击变行内输入框） */
+                    <button
+                      onClick={() => {
+                        setEditingTargetId(h.id)
+                        setTargetDraft(String(h.monthlyTarget))
+                      }}
+                      title="点击修改月目标"
+                      className="text-[11px] font-bold text-[#e07a5f] tabular-nums hover:underline"
+                    >
+                      {h.monthlyTarget}
+                    </button>
+                  )}
+                  {/* 下：当月已打数（茶绿） */}
+                  <span className="text-[11px] font-bold text-[#6a994e] tabular-nums">{monthCount(h.id)}</span>
+                </div>
+              ))}
             </div>
-          ))}
+            {/* 日期行 1~31：交叉处为打卡小方格 */}
+            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+              const ds = `${monthPrefix}${String(day).padStart(2, '0')}`
+              const isToday = ds === todayStr
+              return (
+                <div
+                  key={day}
+                  className={`grid border-t border-neutral-100 dark:border-neutral-800/60 ${isToday ? 'bg-haruto-sea/[0.04]' : ''}`}
+                  style={{ gridTemplateColumns: `40px repeat(${habits.length}, minmax(56px, 1fr))` }}
+                >
+                  <div
+                    className={`py-0.5 text-[10px] text-center tabular-nums ${
+                      isToday ? 'text-haruto-sea font-bold' : 'text-neutral-400'
+                    }`}
+                  >
+                    {day}
+                  </div>
+                  {habits.map((h) => {
+                    const on = checked(h.id, ds)
+                    return (
+                      <button
+                        key={h.id}
+                        onClick={() => onToggleCheck(h.id, ds)}
+                        title={`${h.name} · ${ds}`}
+                        className={`w-7 h-7 rounded-md mx-auto my-1 transition-all duration-150
+                          hover:scale-105 active:scale-90
+                          ${
+                            on
+                              ? 'bg-[#5b8c5a]'
+                              : 'bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.12]'
+                          }`}
+                      />
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ===== 右键菜单浮层（点击别处 / Esc 关闭） ===== */}
+      {menu && menuHabit && (
+        <div
+          ref={menuRef}
+          className={`task-item fixed z-50 rounded-xl border border-neutral-200 dark:border-neutral-700
+            bg-white dark:bg-neutral-800 shadow-xl py-1.5
+            ${menu.mode === 'root' ? 'w-36' : menu.mode === 'icon' ? 'w-52' : 'w-44'}`}
+          style={{ left: menu.x, top: menu.y }}
+        >
+          {menu.mode === 'root' && (
+            <>
+              <MenuItem
+                onClick={() => {
+                  setEditingNameId(menuHabit.id)
+                  setNameDraft(menuHabit.name)
+                  setMenu(null)
+                }}
+              >
+                ✏️ 编辑名称
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setCustomIcon('')
+                  setMenu({ ...menu, mode: 'icon' })
+                }}
+              >
+                😀 更换图标
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setMenuTargetDraft(String(menuHabit.monthlyTarget))
+                  setMenu({ ...menu, mode: 'target' })
+                }}
+              >
+                🎯 设置月目标
+              </MenuItem>
+              <div className="my-1 h-px bg-neutral-100 dark:bg-neutral-700/60" />
+              <MenuItem
+                danger
+                onClick={() => {
+                  onDeleteHabit(menuHabit.id)
+                  setMenu(null)
+                }}
+              >
+                🗑 删除习惯
+              </MenuItem>
+            </>
+          )}
+
+          {/* 图标选择面板：预设 emoji 组 + 自定义输入 */}
+          {menu.mode === 'icon' && (
+            <div className="p-2">
+              <div className="grid grid-cols-5 gap-1">
+                {PRESET_ICONS.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => {
+                      onUpdateHabit(menuHabit.id, { icon: e })
+                      setMenu(null)
+                    }}
+                    className={`h-8 rounded-lg text-base grid place-items-center transition-colors
+                      ${
+                        menuHabit.icon === e
+                          ? 'bg-haruto-sea/15 ring-1 ring-haruto-sea'
+                          : 'hover:bg-black/5 dark:hover:bg-white/10'
+                      }`}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+              <input
+                autoFocus
+                value={customIcon}
+                onChange={(e) => setCustomIcon(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && customIcon.trim()) {
+                    onUpdateHabit(menuHabit.id, { icon: customIcon.trim() })
+                    setMenu(null)
+                  }
+                  if (e.key === 'Escape') setMenu(null)
+                }}
+                placeholder="输入 emoji，回车应用"
+                className="mt-2 w-full rounded-lg border border-neutral-200 dark:border-neutral-600 bg-transparent
+                  px-2 py-1.5 text-xs outline-none focus:border-haruto-sea"
+              />
+            </div>
+          )}
+
+          {/* 月目标输入面板 */}
+          {menu.mode === 'target' && (
+            <div className="p-2.5 flex items-center gap-2">
+              <span className="text-xs text-neutral-400 shrink-0 select-none">月目标</span>
+              <input
+                autoFocus
+                type="number"
+                min={1}
+                value={menuTargetDraft}
+                onChange={(e) => setMenuTargetDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyMenuTarget()
+                  if (e.key === 'Escape') setMenu(null)
+                }}
+                className="w-16 rounded-lg border border-neutral-200 dark:border-neutral-600 bg-transparent
+                  px-2 py-1.5 text-xs text-center tabular-nums outline-none focus:border-haruto-sea"
+              />
+              <button
+                onClick={applyMenuTarget}
+                className="text-xs px-2.5 py-1.5 rounded-lg bg-haruto-sea text-white hover:opacity-90 transition-opacity"
+              >
+                确定
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

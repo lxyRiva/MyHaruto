@@ -1,4 +1,5 @@
 // 月历页：7列×6行，任务色块+白字，今天海蓝高亮（SPEC F2，参考滴答清单月历）
+// 速览区支持直接添加当天任务（回车保存）
 import { useState } from 'react'
 import type { Task, Tag } from '../types'
 
@@ -9,27 +10,32 @@ function fmtDate(d: Date) {
 const WEEK = ['日', '一', '二', '三', '四', '五', '六']
 
 export default function Calendar({
-  tasks, tags, onToggleTask,
+  tasks, tags, onToggleTask, onAddTask,
 }: {
   tasks: Task[]
   tags: Tag[]
   onToggleTask: (id: string, done: boolean) => void
+  onAddTask: (title: string, date: string) => void
 }) {
   const now = new Date()
   const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() }) // m: 0-11
   const [selected, setSelected] = useState<string | null>(null)
+  const [newTitle, setNewTitle] = useState('') // 速览区"添加当天任务"输入框内容
 
   const tagMap = new Map(tags.map((t) => [t.id, t]))
   const mainTasks = tasks.filter((t) => !t.parentTaskId)
 
   // 生成 6×7=42 个格子（从当月第一天所在周的周日开始）
+  // 修复：原先用 gridStart.getDate() + i 拼当前月份，当首周跨到上个月时
+  // （如 8 月 1 日是周六，格子应从 7 月 26 日开始）会把 26+i 当成 8 月的日期，
+  // 整张月历错位、dueDate 匹配失效。改为直接用「1 - 首行偏移 + i」让 Date 构造器自行跨月。
   const firstDay = new Date(view.y, view.m, 1)
-  const gridStart = new Date(view.y, view.m, 1 - firstDay.getDay())
-  const cells: Date[] = Array.from({ length: 42 }, (_, i) => new Date(view.y, view.m, gridStart.getDate() + i))
+  const cells: Date[] = Array.from({ length: 42 }, (_, i) => new Date(view.y, view.m, 1 - firstDay.getDay() + i))
 
   const today = fmtDate(now)
   const isCurrentMonth = (d: Date) => d.getFullYear() === view.y && d.getMonth() === view.m
 
+  // dueDate 为 'YYYY-MM-DD'，与 fmtDate 的补零格式一一对应，无格式错位
   const tasksOn = (d: Date) => mainTasks.filter((t) => t.dueDate === fmtDate(d))
 
   const shiftMonth = (delta: number) =>
@@ -68,7 +74,7 @@ export default function Calendar({
           return (
             <div
               key={i}
-              onClick={() => setSelected(ds === selected ? null : ds)}
+              onClick={() => { const next = ds === selected ? null : ds; setSelected(next); setNewTitle('') }}
               className={`min-h-[96px] border-r border-b border-neutral-100 dark:border-neutral-800/60 last:border-r-0 p-1.5 cursor-pointer
                 ${inMonth ? 'bg-white dark:bg-neutral-900' : 'bg-neutral-50 dark:bg-neutral-900/40'}
                 hover:bg-haruto-sea/5 transition-colors`}
@@ -117,6 +123,24 @@ export default function Calendar({
               </label>
             ))
           )}
+
+          {/* 速览区底部：快速添加当天任务（回车保存） */}
+          <input
+            type="text"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return
+              const title = newTitle.trim()
+              if (!title) return
+              onAddTask(title, selected) // selected 即 'YYYY-MM-DD'
+              setNewTitle('')
+            }}
+            placeholder="+ 添加当天任务，回车保存"
+            className="mt-2 w-full rounded-lg border border-neutral-200 bg-transparent px-3 py-1.5 text-sm
+              placeholder:text-neutral-400 focus:border-haruto-sea focus:outline-none
+              dark:border-neutral-700 dark:placeholder:text-neutral-500 transition-colors"
+          />
         </div>
       )}
     </div>

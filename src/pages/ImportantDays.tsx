@@ -1,6 +1,9 @@
 // 重要日页：左栏重要日（🎂生日/🎉节日/📌自定义）管理，右栏生理期迷你月历（记录 + 预测）
+// 改版：卡片精致化（emoji 圆角方块底 + 标题 + 日期 + 倒计时）、右键菜单（编辑/归档/删除）、
+//       已归档折叠区（恢复/删除）。所有编辑均为行内表单（Electron 下禁用 prompt/alert）。
 // 注意：经期预测只是日历推算，仅供参考，非医疗建议
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { ImportantDay, PeriodRecord } from '../types'
 
 /* ---------- 日期工具（全部走本地时区，避免 toISOString 的 UTC 偏移问题） ---------- */
@@ -37,6 +40,13 @@ const TYPE_EMOJI: Record<ImportantDay['type'], string> = {
   custom: '📌',
 }
 
+// 类型 → emoji 圆角方块底色（克制的浅色系）
+const TYPE_TINT: Record<ImportantDay['type'], string> = {
+  birthday: 'bg-rose-400/15',
+  festival: 'bg-amber-400/15',
+  custom: 'bg-haruto-sea/10',
+}
+
 // 表单里的类型选项
 const TYPE_OPTIONS: { value: ImportantDay['type']; label: string }[] = [
   { value: 'birthday', label: '🎂 生日' },
@@ -62,10 +72,52 @@ function nextOccur(day: ImportantDay, todayStart: Date): Date {
     : thisYear
 }
 
-export default function ImportantDays({ importantDays, periodRecords, onAddDay, onDeleteDay, onPeriodMark }: {
+// 右键菜单状态（屏幕坐标，fixed 定位浮层）
+interface MenuState {
+  id: string
+  x: number
+  y: number
+}
+
+// 编辑表单草稿（回填现有值）
+interface EditDraft {
+  title: string
+  type: ImportantDay['type']
+  date: string // 完整 YYYY-MM-DD（每年重复的项用「下一次发生」的年份回填）
+  repeatYearly: boolean
+  remindDaysBefore: number
+  note: string
+}
+
+// 右键菜单里的单个选项按钮
+function ContextButton({ children, onClick, danger }: { children: ReactNode; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-1.5 text-xs transition-colors
+        ${
+          danger
+            ? 'text-red-500 hover:bg-red-500/10'
+            : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/10'
+        }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+export default function ImportantDays({
+  importantDays,
+  periodRecords,
+  onAddDay,
+  onUpdateDay,
+  onDeleteDay,
+  onPeriodMark,
+}: {
   importantDays: ImportantDay[]
   periodRecords: PeriodRecord[]
   onAddDay: (d: Omit<ImportantDay, 'id'>) => void
+  onUpdateDay: (id: string, patch: Partial<ImportantDay>) => void
   onDeleteDay: (id: string) => void
   onPeriodMark: (date: string, kind: 'start' | 'end') => void // 标记经期开始/结束
 }) {
@@ -77,6 +129,13 @@ export default function ImportantDays({ importantDays, periodRecords, onAddDay, 
   const [repeatYearly, setRepeatYearly] = useState(false)
   const [remindDays, setRemindDays] = useState(7) // 提前提醒天数，默认 7
 
+  /* ---------- 左栏：右键菜单 / 行内编辑 / 归档折叠 ---------- */
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<EditDraft | null>(null)
+  const [archivedOpen, setArchivedOpen] = useState(false)
+
   /* ---------- 右栏：月历视图状态 ---------- */
   const [view, setView] = useState(() => {
     const n = new Date()
@@ -87,8 +146,10 @@ export default function ImportantDays({ importantDays, periodRecords, onAddDay, 
   const todayStr = fmtDate(now)
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-  /* ---------- 左栏：列表（按下一次发生的日期临近排序） ---------- */
-  const sortedDays = [...importantDays].sort(
+  /* ---------- 左栏：列表（已归档不进主列表；按下一次发生日期临近排序） ---------- */
+  const activeDays = importantDays.filter((d) => !d.archived)
+  const archivedDays = importantDays.filter((d) => d.archived)
+  const sortedDays = [...activeDays].sort(
     (a, b) => nextOccur(a, todayStart).getTime() - nextOccur(b, todayStart).getTime()
   )
 
@@ -112,7 +173,66 @@ export default function ImportantDays({ importantDays, periodRecords, onAddDay, 
     setAdding(false)
   }
 
-  /* ---------- 右栏：经期记录与预测 ---------- */
+  /* ---------- 右键菜单：打开 / 关闭 ---------- */
+  const openMenu = (e: ReactMouseEvent, id: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenu({
+      id,
+      x: Math.max(8, Math.min(e.clientX, window.innerWidth - 170)), // 防溢出屏幕
+      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 180)),
+    })
+  }
+
+  // 点击菜单外 / Esc 关闭
+  useEffect(() => {
+    if (!menu) return
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenu(null)
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [menu])
+
+  /* ---------- 行内编辑：回填现有值（每年重复的 MM-DD 补上下一次发生的年份供 date 输入框用） ---------- */
+  const startEdit = (d: ImportantDay) => {
+    setMenu(null)
+    setEditingId(d.id)
+    setDraft({
+      title: d.title,
+      type: d.type,
+      date: d.repeatYearly ? fmtDate(nextOccur(d, todayStart)) : d.date,
+      repeatYearly: d.repeatYearly,
+      remindDaysBefore: d.remindDaysBefore,
+      note: d.note,
+    })
+  }
+  const cancelEdit = () => {
+    setEditingId(null)
+    setDraft(null)
+  }
+  const canSaveDraft = !!draft && draft.title.trim() !== '' && draft.date !== ''
+  const saveEdit = () => {
+    if (!editingId || !draft || !canSaveDraft) return
+    onUpdateDay(editingId, {
+      title: draft.title.trim(),
+      type: draft.type,
+      date: draft.repeatYearly ? draft.date.slice(5) : draft.date, // 每年重复只存 MM-DD
+      repeatYearly: draft.repeatYearly,
+      remindDaysBefore: draft.remindDaysBefore,
+      note: draft.note,
+    })
+    cancelEdit()
+  }
+
+  /* ---------- 右栏：经期记录与预测（逻辑保持不变） ---------- */
   // 进行中的经期：endDate 为空且已开始（startDate <= 今天）
   const ongoing = periodRecords.find((r) => !r.endDate && r.startDate <= todayStr) ?? null
 
@@ -189,11 +309,16 @@ export default function ImportantDays({ importantDays, periodRecords, onAddDay, 
     setView({ y: n.getFullYear(), m: n.getMonth() })
   }
 
+  const menuDay = menu ? importantDays.find((d) => d.id === menu.id) : undefined
+
   return (
     <div className="p-6 flex gap-6">
       {/* ===== 左栏：重要日列表 ===== */}
       <div className="flex-1 min-w-0">
-        <h1 className="text-xl font-bold">重要日</h1>
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-xl font-bold">重要日</h1>
+          <span className="text-[10px] text-neutral-400">右键卡片可编辑 / 归档 / 删除</span>
+        </div>
 
         {/* 添加按钮 → 内联表单（标题 + 类型 + 日期 + 每年重复 + 提前提醒天数） */}
         {adding ? (
@@ -211,7 +336,7 @@ export default function ImportantDays({ importantDays, periodRecords, onAddDay, 
                   if (e.key === 'Escape') setAdding(false)
                 }}
                 placeholder="标题，如：妈妈生日"
-                className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-700
+                className="flex-1 min-w-0 rounded-lg border border-neutral-200 dark:border-neutral-700
                   bg-transparent px-3 py-2 text-sm outline-none focus:border-haruto-sea"
               />
               <input
@@ -295,48 +420,151 @@ export default function ImportantDays({ importantDays, periodRecords, onAddDay, 
           </button>
         )}
 
-        {/* 重要日卡片列表：emoji + 标题 + 日期 + 每年重复标记 + 提醒说明 + hover 删除 */}
+        {/* 重要日卡片列表：emoji 圆角方块底 + 标题 + 日期 + 倒计时，右键呼出菜单 */}
         <div className="mt-4 flex flex-col gap-2">
           {sortedDays.map((d) => {
             const [mo, dy] = monthDayOf(d.date)
             const daysLeft = diffDays(nextOccur(d, todayStart), todayStart)
+            if (editingId === d.id && draft) {
+              /* ---- 原地编辑表单（回填现有值，保存 onUpdateDay） ---- */
+              return (
+                <div
+                  key={d.id}
+                  className="task-item rounded-xl border border-haruto-sea/40 bg-white dark:bg-neutral-900 p-3.5"
+                >
+                  <div className="flex gap-2">
+                    <input
+                      autoFocus
+                      value={draft.title}
+                      onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveEdit()
+                        if (e.key === 'Escape') cancelEdit()
+                      }}
+                      placeholder="标题"
+                      className="flex-1 min-w-0 rounded-lg border border-neutral-200 dark:border-neutral-700
+                        bg-transparent px-3 py-2 text-sm outline-none focus:border-haruto-sea"
+                    />
+                    <input
+                      type="date"
+                      value={draft.date}
+                      onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                      className="rounded-lg border border-neutral-200 dark:border-neutral-700
+                        bg-transparent px-3 py-2 text-sm outline-none focus:border-haruto-sea"
+                    />
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    {TYPE_OPTIONS.map((t) => (
+                      <button
+                        key={t.value}
+                        onClick={() => setDraft({ ...draft, type: t.value })}
+                        className={`text-xs px-3 py-1.5 rounded-full border transition-colors
+                          ${
+                            draft.type === t.value
+                              ? 'border-haruto-sea bg-haruto-sea/10 text-haruto-sea font-medium'
+                              : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:border-neutral-400'
+                          }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                    <label className="flex items-center gap-1.5 text-xs text-neutral-500 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.repeatYearly}
+                        onChange={(e) => setDraft({ ...draft, repeatYearly: e.target.checked })}
+                        className="accent-haruto-sea w-3.5 h-3.5"
+                      />
+                      每年重复
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-neutral-500 select-none">
+                      提前
+                      <input
+                        type="number"
+                        min={0}
+                        max={90}
+                        value={draft.remindDaysBefore}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            remindDaysBefore: Math.max(0, Math.min(90, Number(e.target.value) || 0)),
+                          })
+                        }
+                        className="w-14 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent
+                          px-2 py-1 text-xs text-center tabular-nums outline-none focus:border-haruto-sea"
+                      />
+                      天提醒
+                    </label>
+                  </div>
+                  <input
+                    value={draft.note}
+                    onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+                    placeholder="备注（可选）"
+                    className="mt-2.5 w-full rounded-lg border border-neutral-200 dark:border-neutral-700
+                      bg-transparent px-3 py-2 text-xs outline-none focus:border-haruto-sea"
+                  />
+                  <div className="mt-2.5 flex justify-end gap-2">
+                    <button
+                      onClick={cancelEdit}
+                      className="text-xs px-3 py-1.5 rounded-lg text-neutral-400
+                        hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={saveEdit}
+                      disabled={!canSaveDraft}
+                      className={`text-xs px-4 py-1.5 rounded-lg font-medium transition-colors
+                        ${
+                          canSaveDraft
+                            ? 'bg-haruto-sea text-white hover:opacity-90'
+                            : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed'
+                        }`}
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+            /* ---- 普通卡片 ---- */
             return (
               <div
                 key={d.id}
-                className="task-item group flex items-center gap-3 px-4 py-3 rounded-xl
+                onContextMenu={(e) => openMenu(e, d.id)}
+                title="右键：编辑 / 归档 / 删除"
+                className="task-item group flex items-center gap-3 px-3.5 py-3 rounded-xl
                   border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900
-                  hover:border-haruto-sea/60 hover:shadow-sm transition-all"
+                  hover:border-haruto-sea/50 transition-colors"
               >
-                <span className="text-xl shrink-0">{TYPE_EMOJI[d.type]}</span>
+                {/* emoji 圆角方块底 */}
+                <span
+                  className={`w-9 h-9 shrink-0 grid place-items-center rounded-[10px] text-base ${TYPE_TINT[d.type]}`}
+                >
+                  {TYPE_EMOJI[d.type]}
+                </span>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium truncate">{d.title}</span>
                     {d.repeatYearly && (
-                      <span className="shrink-0 text-[10px] text-neutral-400">每年重复🔁</span>
+                      <span className="shrink-0 text-[10px]" title="每年重复">
+                        🔁
+                      </span>
                     )}
                   </div>
-                  {/* Haruto 陪伴感文案 */}
-                  <div className="mt-0.5 text-xs text-neutral-400 truncate">
-                    提前 {d.remindDaysBefore} 天 Haruto 会和你聊起这件事
-                  </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+                  {/* 日期（每年重复显示月日） */}
+                  <div className="mt-0.5 text-xs text-neutral-400 tabular-nums">
                     {d.repeatYearly ? `每年 ${mo}月${dy}日` : d.date}
                   </div>
-                  <div className="mt-0.5 text-[10px] text-neutral-400 tabular-nums">
-                    {daysLeft === 0 ? '就是今天' : daysLeft > 0 ? `还有 ${daysLeft} 天` : `已过 ${-daysLeft} 天`}
-                  </div>
                 </div>
-                {/* hover 显示删除 */}
-                <button
-                  onClick={() => onDeleteDay(d.id)}
-                  title="删除"
-                  className="shrink-0 text-xs text-neutral-400 opacity-0 group-hover:opacity-100
-                    hover:text-red-500 transition-opacity"
+                {/* 倒计时小字 */}
+                <span
+                  className={`shrink-0 text-xs tabular-nums ${
+                    daysLeft === 0 ? 'text-haruto-sea font-semibold' : 'text-neutral-400'
+                  }`}
                 >
-                  🗑
-                </button>
+                  {daysLeft === 0 ? '今天' : daysLeft > 0 ? `还有 ${daysLeft} 天` : `已过 ${-daysLeft} 天`}
+                </span>
               </div>
             )
           })}
@@ -346,9 +574,64 @@ export default function ImportantDays({ importantDays, periodRecords, onAddDay, 
             </div>
           )}
         </div>
+
+        {/* 已归档折叠区：恢复 / 删除 */}
+        {archivedDays.length > 0 && (
+          <div className="mt-5">
+            <button
+              onClick={() => setArchivedOpen((o) => !o)}
+              className="flex items-center gap-1.5 text-xs text-neutral-400
+                hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors select-none"
+            >
+              <span className={`inline-block transition-transform duration-200 ${archivedOpen ? 'rotate-90' : ''}`}>
+                ▸
+              </span>
+              已归档 ({archivedDays.length})
+            </button>
+            {archivedOpen && (
+              <div className="task-item mt-2 flex flex-col gap-1.5">
+                {archivedDays.map((d) => {
+                  const [mo, dy] = monthDayOf(d.date)
+                  return (
+                    <div
+                      key={d.id}
+                      className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-dashed
+                        border-neutral-200 dark:border-neutral-700 bg-black/[0.02] dark:bg-white/[0.02]"
+                    >
+                      <span
+                        className={`w-8 h-8 shrink-0 grid place-items-center rounded-[10px] text-sm ${TYPE_TINT[d.type]}`}
+                      >
+                        {TYPE_EMOJI[d.type]}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{d.title}</div>
+                        <div className="mt-0.5 text-[10px] text-neutral-400 tabular-nums">
+                          {d.repeatYearly ? `每年 ${mo}月${dy}日` : d.date}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => onUpdateDay(d.id, { archived: false })}
+                        className="shrink-0 text-xs px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-600
+                          text-neutral-500 hover:border-haruto-sea hover:text-haruto-sea transition-colors"
+                      >
+                        恢复
+                      </button>
+                      <button
+                        onClick={() => onDeleteDay(d.id)}
+                        className="shrink-0 text-xs px-2 py-1 rounded-lg text-red-400 hover:text-red-500 transition-colors"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* ===== 右栏：生理期迷你月历 ===== */}
+      {/* ===== 右栏：生理期迷你月历（逻辑不动，视觉与新版卡片统一） ===== */}
       <aside
         className="w-[340px] shrink-0 rounded-xl border border-neutral-200 dark:border-neutral-700
           bg-white dark:bg-neutral-900 p-4"
@@ -457,6 +740,36 @@ export default function ImportantDays({ importantDays, periodRecords, onAddDay, 
         {/* 免责说明 */}
         <div className="mt-1.5 text-[10px] text-neutral-400">预测为日历推算，非医疗建议</div>
       </aside>
+
+      {/* ===== 右键菜单浮层：编辑 / 归档 / 删除（点击别处 / Esc 关闭） ===== */}
+      {menu && menuDay && (
+        <div
+          ref={menuRef}
+          className="task-item fixed z-50 w-36 rounded-xl border border-neutral-200 dark:border-neutral-700
+            bg-white dark:bg-neutral-800 shadow-xl py-1.5"
+          style={{ left: menu.x, top: menu.y }}
+        >
+          <ContextButton onClick={() => startEdit(menuDay)}>✏️ 编辑</ContextButton>
+          <ContextButton
+            onClick={() => {
+              onUpdateDay(menuDay.id, { archived: true })
+              setMenu(null)
+            }}
+          >
+            📦 归档
+          </ContextButton>
+          <div className="my-1 h-px bg-neutral-100 dark:bg-neutral-700/60" />
+          <ContextButton
+            danger
+            onClick={() => {
+              onDeleteDay(menuDay.id)
+              setMenu(null)
+            }}
+          >
+            🗑 删除
+          </ContextButton>
+        </div>
+      )}
     </div>
   )
 }
