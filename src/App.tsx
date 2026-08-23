@@ -9,6 +9,7 @@ import Tasks from './pages/Tasks'
 import Calendar from './pages/Calendar'
 import Habits from './pages/Habits'
 import ImportantDays from './pages/ImportantDays'
+import Stats from './pages/Stats'
 import Placeholder from './pages/Placeholder'
 
 type PageKey =
@@ -20,7 +21,7 @@ const NAV: { key: PageKey; icon: string; label: string; soon?: string }[] = [
   { key: 'tasks', icon: '📋', label: '任务' },
   { key: 'calendar', icon: '📅', label: '月历' },
   { key: 'habits', icon: '✅', label: '习惯打卡' },
-  { key: 'stats', icon: '📊', label: '数据统计', soon: 'M4' },
+  { key: 'stats', icon: '📊', label: '数据统计' },
   { key: 'important', icon: '❤️', label: '重要日' },
   { key: 'album', icon: '🎬', label: '书影清单', soon: 'V2' },
   { key: 'travel', icon: '✈️', label: '旅游札记', soon: 'V2' },
@@ -253,6 +254,8 @@ export default function App() {
             onToggleCheck={toggleHabitCheck}
             onSetMonthlyTarget={setHabitTarget}
           />
+        ) : page === 'stats' ? (
+          <Stats focusSessions={db.focusSessions} sleepRecords={db.sleepRecords} tasks={db.tasks} tags={db.tags} />
         ) : page === 'important' ? (
           <ImportantDays
             importantDays={db.importantDays}

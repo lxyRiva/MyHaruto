@@ -16,8 +16,8 @@ import * as echarts from 'echarts';
 import type { Task, Tag, FocusSession, SleepRecord } from '../types';
 
 /* ==================== 常量与工具函数 ==================== */
-/** 海蓝主题色（飞书蓝） */
-const OCEAN_BLUE = '#3370ff';
+/** 海蓝主题色（与全局强调色一致） */
+const OCEAN_BLUE = '#3d7ea6';
 /** 无标签（或任务已删除）时饼图的回退色，中性灰 */
 const FALLBACK_COLOR = '#6b7280';
 /** 图表主文字色（图例等，明暗模式通用） */
@@ -246,7 +246,8 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
         tooltip: {
           trigger: 'item',
           formatter: (params) => {
-            const v = params.value as number[];
+            const p = Array.isArray(params) ? params[0] : params;
+            const v = p.value as number[]; // [第几周, 行下标, 分钟数, 几号]
             return `${monthIndex + 1}月${v[3]}日<br/>专注 ${v[2]} 分钟`;
           },
         },
@@ -276,7 +277,7 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
           bottom: 0,
           text: ['多', '少'],
           textStyle: { color: TEXT_SECONDARY, fontSize: 11 },
-          inRange: { color: ['#eef4ff', '#c8dcff', '#94bdfc', '#5c8ef9', OCEAN_BLUE] }, // 海蓝渐变，0 最浅
+          inRange: { color: ['#e8f1f7', '#c3d9e8', '#94bcd6', '#5f94b8', OCEAN_BLUE] }, // 海蓝渐变，0 最浅
         },
         series: [
           {
@@ -383,7 +384,7 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
               onClick={() => setViewMode(key)}
               className={`rounded-md px-4 py-1 text-sm transition-colors ${
                 viewMode === key
-                  ? 'bg-[#3370ff] text-white shadow-sm' // 海蓝选中
+                  ? 'bg-[#3d7ea6] text-white shadow-sm' // 海蓝选中
                   : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
               }`}
             >
