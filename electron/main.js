@@ -7,12 +7,24 @@ const dataDir = path.join(app.getPath('userData'), 'data')
 const dataFile = path.join(dataDir, 'db.json')
 
 function defaultDb() {
-  return { tasks: [], settings: { theme: 'light' } }
+  return {
+    tasks: [],
+    tags: [
+      { id: 'okr', name: '年度OKR', color: '#d4a017', isSpecial: true },
+      { id: 'daily', name: '日常', color: '#3d7ea6', isSpecial: false },
+    ],
+    focusSessions: [],
+    settings: { theme: 'light' },
+  }
 }
 
 function loadDb() {
   try {
-    return JSON.parse(fs.readFileSync(dataFile, 'utf-8'))
+    const db = JSON.parse(fs.readFileSync(dataFile, 'utf-8'))
+    // 旧版本数据兼容：补齐缺失的字段
+    if (!db.tags) db.tags = defaultDb().tags
+    if (!db.focusSessions) db.focusSessions = []
+    return db
   } catch {
     return defaultDb()
   }
