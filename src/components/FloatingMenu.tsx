@@ -6,6 +6,7 @@ export interface MenuEntry {
   onClick?: () => void
   danger?: boolean
   header?: boolean // 分组标题，不可点击
+  icon?: string // 左侧小图标（线性风格描述用，暂用符号）
 }
 
 export default function FloatingMenu({
@@ -18,16 +19,14 @@ export default function FloatingMenu({
 }) {
   const ref = useRef<HTMLDivElement>(null)
 
-  // 点击菜单外部或滚动时关闭
+  // 点击菜单外部时关闭（滚轮滚动不关闭——修复：下滑页面菜单消失的 bug）
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
     window.addEventListener('mousedown', h)
-    window.addEventListener('wheel', onClose)
     return () => {
       window.removeEventListener('mousedown', h)
-      window.removeEventListener('wheel', onClose)
     }
   }, [onClose])
 

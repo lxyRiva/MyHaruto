@@ -1,6 +1,10 @@
-// 番茄专注页（参考滴答清单专注页：左侧主计时区 + 右侧今日概览，飞书极简风 + 暗色适配）
+// 番茄专注页（按参考图重写）：居中大圆环计时器 + 环上方任务胶囊 + 三按钮横排 + 右侧今日统计
 // 计时显示用本地 useState + setInterval(250ms) 刷新，不依赖任何计时库；
 // 进行中的会话状态由 App 通过 pomo(PomoDisplay) 下发，本页只负责展示与触发回调。
+//
+// 关键修正（问题4）：
+// - 正计时 stopwatch = 无时间限制，无限往上走（分钟选择器在该模式下隐藏）；
+// - 倒计时 countdown = 选分钟（15/25/45/60 预设 + 自定义 input）。
 import { useEffect, useRef, useState } from 'react'
 import type { Task, FocusSession } from '../types'
 
@@ -14,6 +18,7 @@ export interface PomoDisplay {
   endAt: number // countdown 结束时间戳；stopwatch 给 0
   remainingMs: number // 暂停时剩余；运行中忽略
   running: boolean
+  swAccum: number // 正计时累计毫秒（暂停不清零；App 恢复时会把 startedAt 回拨该值）
 }
 
 /* ==================== 工具函数 ==================== */
@@ -27,7 +32,7 @@ const fmtRemaining = (ms: number): string => {
   return `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`
 }
 
-/** 毫秒 → 已进行 MM:SS（向下取整秒：从 00:00 起跳，超过 1 小时进位到分钟数） */
+/** 毫秒 → 已进行 MM:SS（向下取整秒：从 00:00 起跳；正计时无上限，分钟数可无限进位） */
 const fmtElapsed = (ms: number): string => {
   const s = Math.max(0, Math.floor(ms / 1000))
   return `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`
@@ -36,11 +41,11 @@ const fmtElapsed = (ms: number): string => {
 /** ISO 时间字符串 → 'HH:MM'（专注记录的开始时刻） */
 const hhmm = (iso: string): string => iso.slice(11, 16)
 
-/** 圆环几何参数：半径 96（viewBox 240），周长 = 2πr */
-const RING_R = 96
+/** 圆环几何参数：半径 120（viewBox 260），周长 = 2πr；环宽 7px（细环，参考图规格 6-8px） */
+const RING_R = 120
 const RING_C = 2 * Math.PI * RING_R
 
-/** 时长预设（分钟） */
+/** 时长预设（分钟）：仅倒计时模式可选 */
 const PRESET_MINUTES = [15, 25, 45, 60]
 
 /** 模式中文名 */
@@ -66,7 +71,7 @@ export default function PomodoroPage({
 }) {
   /** 顶部 tab 选中的模式（决定下一次开始的模式）；进行中时以 pomo.mode 为准 */
   const [tabMode, setTabMode] = useState<'countdown' | 'stopwatch'>('countdown')
-  /** 当前选择的专注分钟数（预设或自定义，默认经典 25 分钟） */
+  /** 当前选择的专注分钟数（预设或自定义，默认经典 25 分钟；仅倒计时使用） */
   const [minutes, setMinutes] = useState(25)
   /** 自定义分钟输入框的文本（独立于 minutes，保证输入流畅） */
   const [customText, setCustomText] = useState('')
@@ -76,10 +81,13 @@ export default function PomodoroPage({
   const autoDoneRef = useRef(false)
   /**
    * 正计时暂停时的已进行时长缓存（250ms 精度）。
-   * 防御性兜底：若 App 在暂停时未把累计时长写进 remainingMs（其内部用 swAccum 另存），
-   * 用最近一次运行中的计算值兜底，避免暂停瞬间跳回 00:00。
+   * 说明：App 恢复正计时时会把 startedAt 回拨 swAccum，因此运行中 now-startedAt 恒等于
+   * 累计总时长；但 App 在「多次暂停」时对 swAccum 的累加存在重复计数（页面层无法修复），
+   * 故暂停态优先取本页在运行期持续刷新的缓存值，仅在页面挂载时才兜底读 swAccum。
    */
   const swElapsedCacheRef = useRef(0)
+  /** 任务选择下拉菜单开关（点击环上方胶囊弹出） */
+  const [taskMenuOpen, setTaskMenuOpen] = useState(false)
 
   /* ---------- 计时刷新：仅在存在进行中会话时开启 250ms 心跳 ---------- */
   useEffect(() => {
@@ -114,6 +122,8 @@ export default function PomodoroPage({
 
   /** 展示中的模式：有会话用会话模式，否则用顶部 tab 选的模式 */
   const activeMode: 'countdown' | 'stopwatch' = pomo ? pomo.mode : tabMode
+  /** 当前选中的任务对象（胶囊里显示它的标题） */
+  const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null
 
   /* ---------- 计时数值计算 ---------- */
   /** 倒计时剩余毫秒：运行中按 endAt 推算，暂停时读 remainingMs */
@@ -121,37 +131,51 @@ export default function PomodoroPage({
     ? Math.max(0, pomo.running ? pomo.endAt - nowTs : pomo.remainingMs)
     : 0
   /**
-   * 正计时已进行毫秒：运行中从 startedAt 累计；暂停时优先读 remainingMs
-   * （App 把暂停时的累计写进该字段），为 0 则用运行期缓存值兜底。
+   * 正计时已进行毫秒：
+   * - 运行中：now - startedAt（App 恢复时已把 startedAt 回拨 swAccum，此差值即累计总时长，
+   *   等价于「swAccum + 恢复后经过的时间」，且避免与 swAccum 相加造成重复累计）；
+   * - 暂停中：优先读本页运行期缓存；页面挂载进暂停态（缓存为 0）时兜底读 swAccum。
    */
-  const elapsedMs = pomo
+  const elapsedMs = pomo && pomo.mode === 'stopwatch'
     ? pomo.running
       ? Math.max(0, nowTs - pomo.startedAt)
-      : pomo.remainingMs > 0
-        ? pomo.remainingMs
-        : swElapsedCacheRef.current
+      : swElapsedCacheRef.current > 0
+        ? swElapsedCacheRef.current
+        : pomo.swAccum
     : 0
-  /** 中心大数字：countdown 显示剩余，stopwatch 显示已进行 */
-  const display = pomo
-    ? pomo.mode === 'countdown'
+  /** 中心大数字：countdown 显示剩余，stopwatch 显示已进行；空闲态显示预览值 */
+  const display = !pomo
+    ? tabMode === 'countdown'
+      ? fmtRemaining(minutes * 60000) // 空闲预览所选时长，如 25:00
+      : '00:00' // 正计时从零开始
+    : pomo.mode === 'countdown'
       ? fmtRemaining(remainingMs)
       : fmtElapsed(elapsedMs)
-    : ''
-  /** 圆环进度：countdown = 剩余/总；stopwatch 无进度概念，满环呼吸 */
+  /**
+   * 圆环进度：
+   * - countdown：随时间流逝从 0 → 1 逐渐填满（剩余越少环越满）；
+   * - stopwatch：无总时长概念，以「每小时一圈」循环填充（纯视觉动效，不影响计数值）；
+   * - 空闲：countdown 预览满环（全部时间都在），stopwatch 空环。
+   */
   const totalMs = (pomo?.totalMin ?? 0) * 60 * 1000
   const progress = !pomo
-    ? 0
-    : pomo.mode === 'stopwatch'
-      ? 1
-      : totalMs > 0
-        ? Math.min(1, Math.max(0, remainingMs / totalMs))
+    ? tabMode === 'countdown' ? 1 : 0
+    : pomo.mode === 'countdown'
+      ? totalMs > 0
+        ? 1 - Math.min(1, Math.max(0, remainingMs / totalMs))
         : 0
+      : (elapsedMs % 3600000) / 3600000
 
-  /** 重开：以相同参数重新 onStart（stopwatch 的 totalMin 无意义，回退用当前所选分钟数） */
+  /** 重开：以相同参数重新 onStart（stopwatch 无分钟概念，传 0） */
   const handleRestart = () => {
     if (!pomo) return
-    const m = pomo.mode === 'countdown' ? pomo.totalMin : minutes
-    onStart(m, pomo.mode)
+    onStart(pomo.mode === 'countdown' ? pomo.totalMin : 0, pomo.mode)
+  }
+
+  /** 空闲态点击主按钮：开始新会话（正计时不受分钟数限制，传 0） */
+  const handleStart = () => {
+    if (pomo) { onToggle(); return }
+    onStart(tabMode === 'countdown' ? minutes : 0, tabMode)
   }
 
   /** 今日概览统计 */
@@ -159,18 +183,20 @@ export default function PomodoroPage({
 
   return (
     <div className="p-6">
-      {/* 顶部小标题栏：标题 + 番茄计时/正计时切换 */}
+      {/* 顶部：标题 + 番茄计时/正计时小 tab（会话进行中锁定当前模式） */}
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">专注</h1>
         <div className="flex rounded-lg bg-neutral-100 p-1 dark:bg-neutral-800">
           {(['countdown', 'stopwatch'] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setTabMode(m)}
+              onClick={() => !pomo && setTabMode(m)}
               className={`rounded-md px-4 py-1 text-sm transition-colors ${
                 activeMode === m
                   ? 'bg-haruto-sea text-white shadow-sm' // 海蓝选中
-                  : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+                  : pomo
+                    ? 'cursor-not-allowed text-neutral-400 dark:text-neutral-600' // 进行中：锁定
+                    : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
               }`}
             >
               {MODE_LABEL[m]}
@@ -180,34 +206,148 @@ export default function PomodoroPage({
       </header>
 
       <div className="flex items-stretch gap-4">
-        {/* ============ 左侧：主计时区 ============ */}
-        <main className="flex-1 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-          {!pomo ? (
-            /* ---------- 空闲态：时长选择 + 任务池 ---------- */
-            <div className="mx-auto max-w-md">
-              {/* 时长选择（当前模式为顶部 tab 所选） */}
-              <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                时长选择
-                <span className="ml-2 text-xs font-normal text-neutral-400">{MODE_LABEL[tabMode]}</span>
+        {/* ============ 左侧：主计时区（居中大圆环） ============ */}
+        <main className="flex flex-1 flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+          {/* ---- 圆环上方：任务名胶囊（白底海蓝描边，空闲时点击弹出任务选择列表） ---- */}
+          {pomo ? (
+            <div
+              className="max-w-[300px] truncate rounded-full border border-haruto-sea bg-white px-5 py-1.5 text-sm text-haruto-sea dark:bg-neutral-900"
+              title={pomo.title || titleOf(pomo.taskId)}
+            >
+              🍅 {pomo.title || titleOf(pomo.taskId)}
+            </div>
+          ) : (
+            <div className="relative">
+              <button
+                onClick={() => setTaskMenuOpen((v) => !v)}
+                className="flex max-w-[300px] items-center gap-1.5 rounded-full border border-haruto-sea/70 bg-white px-5 py-1.5 text-sm text-neutral-700 transition-all hover:border-haruto-sea hover:text-haruto-sea hover:shadow-sm dark:bg-neutral-900 dark:text-neutral-200"
+              >
+                <span className="truncate">
+                  {selectedTask ? `🍅 ${selectedTask.title}` : '选择任务'}
+                </span>
+                <span className="text-[10px] opacity-60">▾</span>
+              </button>
+
+              {/* 点击胶囊弹出的任务选择列表（点空白处关闭） */}
+              {taskMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setTaskMenuOpen(false)} />
+                  <div className="absolute left-1/2 top-full z-20 mt-2 max-h-64 w-72 -translate-x-1/2 overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1 shadow-lg animate-[fadeSlideIn_.15s_ease] dark:border-neutral-700 dark:bg-neutral-800">
+                    {tasks.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-neutral-400">暂无可专注的任务</div>
+                    ) : (
+                      tasks.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => { onSelectTask(t.id); setTaskMenuOpen(false) }}
+                          className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                            selectedTaskId === t.id
+                              ? 'bg-haruto-sea text-white' // 海蓝高亮选中
+                              : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60'
+                          }`}
+                        >
+                          <span className="truncate">{t.title}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ---- 居中大圆环计时器：细环（7px）+ 海蓝进度 + 中心巨大 MM:SS ---- */}
+          <div className="relative mt-6" style={{ width: 260, height: 260 }}>
+            <svg width={260} height={260} viewBox="0 0 260 260" className="-rotate-90">
+              {/* 底环 */}
+              <circle
+                cx={130} cy={130} r={RING_R} fill="none" strokeWidth={7}
+                className="stroke-neutral-200 dark:stroke-neutral-800"
+              />
+              {/* 进度环（海蓝） */}
+              <circle
+                cx={130} cy={130} r={RING_R} fill="none" strokeWidth={7} strokeLinecap="round"
+                stroke="#3d7ea6"
+                strokeDasharray={RING_C}
+                strokeDashoffset={RING_C * (1 - progress)}
+                style={{ transition: 'stroke-dashoffset 0.3s linear' }}
+              />
+            </svg>
+            {/* 中心：状态 + 巨大 MM:SS */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="mb-2 flex items-center text-xs text-neutral-400">
+                {/* 运行状态小圆点：运行中海蓝呼吸，暂停灰色 */}
+                <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${
+                  pomo?.running ? 'animate-pulse bg-haruto-sea' : 'bg-neutral-300 dark:bg-neutral-600'
+                }`} />
+                {pomo ? (pomo.running ? '专注中' : '已暂停') : MODE_LABEL[tabMode]}
               </div>
-              <div className="mt-3 grid grid-cols-4 gap-3">
+              <div className="text-6xl font-bold tabular-nums tracking-tight text-neutral-900 dark:text-neutral-100">
+                {display}
+              </div>
+              {pomo?.mode === 'countdown' && (
+                <div className="mt-2 text-xs text-neutral-400">共 {pomo.totalMin} 分钟</div>
+              )}
+            </div>
+          </div>
+
+          {/* ---- 圆环下方按钮横排：放弃 | 开始/暂停（大且高亮）| 完成 | 重开 ----
+               注：保留「完成」是因为正计时没有自然终点，必须给记录专注留出入口 */}
+          <div className="mt-8 flex items-center gap-4">
+            <button
+              onClick={onAbandon}
+              disabled={!pomo}
+              className="rounded-full px-5 py-2 text-sm text-neutral-400 transition-colors hover:text-red-500 disabled:pointer-events-none disabled:opacity-40 dark:text-neutral-500"
+            >
+              放弃
+            </button>
+            <button
+              onClick={handleStart}
+              disabled={!pomo && !selectedTaskId}
+              className={`min-w-[120px] rounded-full px-8 py-3 text-base font-medium transition-all active:scale-95 ${
+                !pomo && !selectedTaskId
+                  ? 'cursor-not-allowed bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500'
+                  : 'bg-haruto-sea text-white shadow-md hover:shadow-lg hover:opacity-90'
+              }`}
+            >
+              {pomo ? (pomo.running ? '暂停' : '开始') : '开始专注'}
+            </button>
+            <button
+              onClick={onComplete}
+              disabled={!pomo}
+              className="rounded-full border border-haruto-sea/70 px-5 py-2 text-sm text-haruto-sea transition-colors hover:bg-haruto-sea hover:text-white disabled:pointer-events-none disabled:opacity-40"
+            >
+              完成
+            </button>
+            <button
+              onClick={handleRestart}
+              disabled={!pomo}
+              className="rounded-full border border-neutral-200 px-5 py-2 text-sm text-neutral-600 transition-colors hover:border-haruto-sea hover:text-haruto-sea disabled:pointer-events-none disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300"
+            >
+              重开
+            </button>
+          </div>
+
+          {/* ---- 按钮下方：空闲态的时长选择（仅倒计时；正计时无限制，隐藏选择器） ---- */}
+          {!pomo && tabMode === 'countdown' && (
+            <div className="mt-8">
+              <div className="text-center text-xs text-neutral-400">专注时长</div>
+              <div className="mt-2 flex items-center justify-center gap-2">
                 {PRESET_MINUTES.map((p) => (
                   <button
                     key={p}
                     onClick={() => { setMinutes(p); setCustomText('') }}
-                    className={`h-16 rounded-xl text-lg font-semibold transition-all ${
+                    className={`h-10 w-14 rounded-xl text-sm font-semibold transition-all ${
                       minutes === p && customText === ''
                         ? 'bg-haruto-sea text-white shadow-sm' // 海蓝选中
                         : 'border border-neutral-200 text-neutral-600 hover:border-haruto-sea hover:text-haruto-sea dark:border-neutral-700 dark:text-neutral-300'
                     }`}
                   >
                     {p}
-                    <span className="ml-0.5 text-xs font-normal">分钟</span>
+                    <span className="ml-0.5 text-[10px] font-normal">分</span>
                   </button>
                 ))}
-              </div>
-              {/* 自定义分钟 */}
-              <div className="mt-3 flex items-center gap-2">
+                {/* 自定义分钟 */}
                 <input
                   type="number"
                   min={1}
@@ -219,121 +359,25 @@ export default function PomodoroPage({
                     if (Number.isFinite(n) && n >= 1) setMinutes(Math.floor(n)) // 非法输入不覆盖上次有效值
                   }}
                   placeholder="自定义"
-                  className="w-28 rounded-lg border border-neutral-200 bg-transparent px-3 py-1.5 text-sm
+                  className="h-10 w-24 rounded-xl border border-neutral-200 bg-transparent px-3 text-sm tabular-nums
                     focus:border-haruto-sea focus:outline-none dark:border-neutral-700 transition-colors"
                 />
                 <span className="text-sm text-neutral-400">分钟</span>
               </div>
-
-              {/* 提示：先从任务池点选任务 */}
-              <div className="mt-5 text-sm font-medium text-neutral-900 dark:text-neutral-100">任务池</div>
-              <p className="mt-1 text-xs text-neutral-400">先从下方点选一个任务，再开始专注</p>
-              <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto pr-1">
-                {tasks.length === 0 ? (
-                  <div className="py-6 text-center text-sm text-neutral-400">暂无可专注的任务</div>
-                ) : (
-                  tasks.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => onSelectTask(t.id)}
-                      className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                        selectedTaskId === t.id
-                          ? 'bg-haruto-sea text-white' // 海蓝高亮选中
-                          : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
-                      }`}
-                    >
-                      <span className="truncate">{t.title}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-
-              {/* 开始专注：未选任务时禁用 */}
-              <button
-                disabled={!selectedTaskId}
-                onClick={() => onStart(minutes, tabMode)}
-                className={`mt-5 w-full rounded-xl py-2.5 text-sm font-medium transition-all ${
-                  selectedTaskId
-                    ? 'bg-haruto-sea text-white shadow-sm hover:opacity-90'
-                    : 'cursor-not-allowed bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500'
-                }`}
-              >
-                开始专注{selectedTaskId ? ` · ${minutes} 分钟` : ''}
-              </button>
+              {!selectedTaskId && (
+                <p className="mt-3 text-center text-xs text-neutral-400">先点击上方胶囊选择任务，再开始专注</p>
+              )}
             </div>
-          ) : (
-            /* ---------- 进行中：大圆环 + 任务名 + 操作按钮 ---------- */
-            <div className="flex flex-col items-center">
-              <div className="relative" style={{ width: 240, height: 240 }}>
-                {/* SVG 进度环：countdown 按剩余/总收缩；stopwatch 满环呼吸 */}
-                <svg width={240} height={240} viewBox="0 0 240 240" className="-rotate-90">
-                  <circle
-                    cx={120} cy={120} r={RING_R} fill="none" strokeWidth={12}
-                    className="stroke-neutral-200 dark:stroke-neutral-800"
-                  />
-                  <circle
-                    cx={120} cy={120} r={RING_R} fill="none" strokeWidth={12} strokeLinecap="round"
-                    stroke="#3d7ea6"
-                    strokeDasharray={RING_C}
-                    strokeDashoffset={RING_C * (1 - progress)}
-                    className={pomo.mode === 'stopwatch' ? 'animate-pulse' : ''}
-                    style={{ transition: 'stroke-dashoffset 0.25s linear' }}
-                  />
-                </svg>
-                {/* 中心：状态 + 大数字 MM:SS */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className="mb-1 text-xs text-neutral-400">
-                    {pomo.running ? '专注中' : '已暂停'} · {MODE_LABEL[pomo.mode]}
-                  </div>
-                  <div className="text-5xl font-bold tabular-nums tracking-wider text-neutral-900 dark:text-neutral-100">
-                    {display}
-                  </div>
-                  {pomo.mode === 'countdown' && (
-                    <div className="mt-1 text-xs text-neutral-400">共 {pomo.totalMin} 分钟</div>
-                  )}
-                </div>
-              </div>
-
-              {/* 圆环下任务名 */}
-              <div className="mt-4 max-w-full truncate text-sm text-neutral-500 dark:text-neutral-400" title={pomo.title}>
-                {pomo.title || titleOf(pomo.taskId)}
-              </div>
-
-              {/* 操作按钮组：开始/暂停、重开、放弃、完成 */}
-              <div className="mt-6 flex items-center gap-3">
-                <button
-                  onClick={onToggle}
-                  className="min-w-[96px] rounded-xl bg-haruto-sea px-5 py-2 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90"
-                >
-                  {pomo.running ? '暂停' : '开始'}
-                </button>
-                <button
-                  onClick={handleRestart}
-                  className="rounded-xl border border-neutral-200 px-5 py-2 text-sm text-neutral-600 transition-colors
-                    hover:border-haruto-sea hover:text-haruto-sea dark:border-neutral-700 dark:text-neutral-300"
-                >
-                  重开
-                </button>
-                <button
-                  onClick={onComplete}
-                  className="rounded-xl border border-haruto-sea px-5 py-2 text-sm text-haruto-sea transition-colors hover:bg-haruto-sea hover:text-white"
-                >
-                  完成
-                </button>
-                <button
-                  onClick={onAbandon}
-                  className="rounded-xl border border-transparent px-5 py-2 text-sm text-neutral-400 transition-colors
-                    hover:border-red-300 hover:text-red-500 dark:hover:border-red-500/50"
-                >
-                  放弃
-                </button>
-              </div>
-            </div>
+          )}
+          {!pomo && tabMode === 'stopwatch' && (
+            <p className="mt-8 text-xs text-neutral-400">
+              正计时无时间限制，开始后自动从 00:00 往上累计{!selectedTaskId && '；先点击上方胶囊选择任务'}
+            </p>
           )}
         </main>
 
-        {/* ============ 右侧：今日概览区 ============ */}
-        <aside className="w-[300px] shrink-0 space-y-4">
+        {/* ============ 右侧：今日统计面板 ============ */}
+        <aside className="w-72 shrink-0 space-y-4">
           {/* 今日概览卡 */}
           <section className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
             <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">今日概览</h2>
@@ -355,7 +399,7 @@ export default function PomodoroPage({
             </div>
           </section>
 
-          {/* 今日专注记录列表 */}
+          {/* 今日专注记录列表：任务名 + N 分钟 + HH:MM */}
           <section className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
             <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">今日专注记录</h2>
             {todaySessions.length === 0 ? (

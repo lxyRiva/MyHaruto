@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import type { Db, Task, Tag, Habit, ImportantDay } from './types'
 import PomodoroBar from './components/PomodoroBar'
+import { IconTasks, IconTimer, IconCalendar, IconCheck, IconChart, IconHeart, IconFilm, IconPlane, IconChat, IconTown, IconSun, IconMoon } from './components/icons'
 import Today from './pages/Today'
 import Tasks from './pages/Tasks'
 import Calendar from './pages/Calendar'
@@ -15,18 +16,17 @@ type PageKey =
   | 'today' | 'tasks' | 'calendar' | 'habits' | 'stats' | 'focus'
   | 'important' | 'album' | 'travel' | 'chat' | 'town'
 
-const NAV: { key: PageKey; icon: string; label: string; soon?: string }[] = [
-  { key: 'today', icon: '🏠', label: '今日' },
-  { key: 'tasks', icon: '📋', label: '任务' },
-  { key: 'focus', icon: '⏱', label: '专注' },
-  { key: 'calendar', icon: '📅', label: '月历' },
-  { key: 'habits', icon: '✅', label: '习惯打卡' },
-  { key: 'stats', icon: '📊', label: '数据统计' },
-  { key: 'important', icon: '❤️', label: '重要日' },
-  { key: 'album', icon: '🎬', label: '书影清单', soon: 'V2' },
-  { key: 'travel', icon: '✈️', label: '旅游札记', soon: 'V2' },
-  { key: 'chat', icon: '💬', label: 'Haruto', soon: 'M5' },
-  { key: 'town', icon: '🏘', label: '小镇', soon: 'V3' },
+const NAV: { key: PageKey; icon: () => JSX.Element; label: string; soon?: string }[] = [
+  { key: 'tasks', icon: IconTasks, label: '任务' },
+  { key: 'focus', icon: IconTimer, label: '专注' },
+  { key: 'calendar', icon: IconCalendar, label: '月历' },
+  { key: 'habits', icon: IconCheck, label: '习惯打卡' },
+  { key: 'stats', icon: IconChart, label: '数据统计' },
+  { key: 'important', icon: IconHeart, label: '重要日' },
+  { key: 'album', icon: IconFilm, label: '书影清单', soon: 'V2' },
+  { key: 'travel', icon: IconPlane, label: '旅游札记', soon: 'V2' },
+  { key: 'chat', icon: IconChat, label: 'Haruto', soon: 'M5' },
+  { key: 'town', icon: IconTown, label: '小镇', soon: 'V3' },
 ]
 
 const PLACEHOLDER_PAGE: Partial<Record<PageKey, string>> = {
@@ -220,12 +220,21 @@ export default function App() {
     tasks: db.tasks,
     tags: db.tags,
     onAdd: addTask,
+    onAddSub: addSubtask,
     onUpdate: updateTask,
     onDelete: deleteTask,
     onPomodoro: (t: Task) => setPomoTarget(t),
     selectedId,
     onSelect: (id: string | null) => setSelectedId(id),
   }
+
+  // 专注页任务池：符合条件的主任务 + 它们的全部子任务（子任务可独立计时，问题2）
+  const focusMainIds = new Set(
+    mainTasks.filter((t) => !t.done && (!t.dueDate || t.dueDate <= todayStr)).map((t) => t.id)
+  )
+  const focusPool = db.tasks.filter(
+    (t) => !t.done && (focusMainIds.has(t.id) || (t.parentTaskId && focusMainIds.has(t.parentTaskId)))
+  )
 
   // L2 清单树行
   const ListRow = ({ id, icon, label, color }: { id: string; icon?: string; label: string; color?: string }) => (
@@ -246,26 +255,31 @@ export default function App() {
 
   return (
     <div className="flex h-full">
-      {/* ===== L1：图标导航栏 ===== */}
+      {/* ===== L1：图标导航栏（线性图标，问题2） ===== */}
       <aside className="w-14 shrink-0 flex flex-col items-center border-r border-neutral-200 dark:border-neutral-800 bg-[#f5f5f4] dark:bg-[#121212] py-3 gap-1">
-        <div className="text-lg mb-2" title="MyHaruto">🌙</div>
+        <div className="mb-2 text-haruto-sea" title="MyHaruto">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" />
+          </svg>
+        </div>
         {NAV.map((n) => {
           const active = page === n.key
           const disabled = !!n.soon
+          const Icon = n.icon
           return (
             <button
               key={n.key}
               onClick={() => !disabled && setPage(n.key)}
               disabled={disabled}
               title={n.label}
-              className={`w-10 h-10 grid place-items-center rounded-xl text-base transition-all
+              className={`w-10 h-10 grid place-items-center rounded-xl transition-all
                 ${active
-                  ? 'bg-haruto-sea/15 text-haruto-sea scale-105'
+                  ? 'bg-haruto-sea/15 text-haruto-sea'
                   : disabled
                     ? 'text-neutral-300 dark:text-neutral-700 cursor-default'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10'}`}
+                    : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-black/5 dark:hover:bg-white/10'}`}
             >
-              {n.icon}
+              <Icon />
             </button>
           )
         })}
@@ -273,19 +287,29 @@ export default function App() {
         <button
           onClick={toggleTheme}
           title={db.settings.theme === 'dark' ? '切换日间模式' : '切换夜间模式'}
-          className="w-10 h-10 grid place-items-center rounded-xl hover:bg-black/5 dark:hover:bg-white/10"
+          className="w-10 h-10 grid place-items-center rounded-xl text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-black/5 dark:hover:bg-white/10"
         >
-          {db.settings.theme === 'dark' ? '☀️' : '🌙'}
+          {db.settings.theme === 'dark' ? <IconSun /> : <IconMoon />}
         </button>
       </aside>
 
-      {/* ===== L2：清单树（仅任务模块，问题9 三层结构） ===== */}
-      {page === 'tasks' && (
+      {/* ===== L2：清单树（任务模块+今天页共用，问题1：今天收进清单树顶部） ===== */}
+      {(page === 'tasks' || page === 'today') && (
         <aside className="w-52 shrink-0 flex flex-col border-r border-neutral-200 dark:border-neutral-800 bg-[#fafaf9] dark:bg-[#181818] py-4">
           <div className="px-3 text-xs font-bold text-neutral-400 tracking-widest mb-2">清单</div>
           <nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
+            <button
+              onClick={() => setPage('today')}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+                ${page === 'today'
+                  ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
+                  : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+            >
+              <IconSun />
+              <span>今天</span>
+              <span className="ml-auto text-[10px] text-neutral-400 tabular-nums">{countOf('today')}</span>
+            </button>
             <ListRow id="all" icon="🗂" label="全部" />
-            <ListRow id="today" icon="🏠" label="今日" />
             {specialTags.length > 0 && (
               <div className="pt-2 pb-0.5 px-3 text-[10px] font-medium text-neutral-400 tracking-wide">我的愿景</div>
             )}
@@ -349,7 +373,7 @@ export default function App() {
           <Tasks {...taskProps} activeListId={activeListId} />
         ) : page === 'focus' ? (
           <PomodoroPage
-            tasks={mainTasks.filter((t) => !t.done && (!t.dueDate || t.dueDate <= todayStr))}
+            tasks={focusPool}
             selectedTaskId={pomoTarget?.id ?? null}
             onSelectTask={(id) => setPomoTarget(db.tasks.find((t) => t.id === id) ?? null)}
             pomo={pomo}

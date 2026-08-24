@@ -1,7 +1,11 @@
-// 习惯打卡页（重写版）：仅 周 / 月 双视图
+// 习惯打卡页：周 / 月 / 年 三视图
 // - 周视图：顶部周一~日横向星期栏（今日海蓝高亮+下划线），习惯为行、星期为列的打卡矩阵
 //   打卡格统一 w-8 h-8 rounded-full：未打 = 空心浅灰描边圆，已打 = 实心绿(#5b8c5a)+白✓
 // - 月视图：像一张表格——最左列竖向 1~31 日期，每个习惯一列（竖排名 + 上=月目标/下=当月已打数）
+// - 年视图：极简透明边框表格（习惯名 / 已打卡 / 年目标 三列）
+//   年目标默认动态计算 = 月目标 ×（创建月~当年12月的月数，含头含尾，如 5 月创建 = 8 个月），
+//   灰显；点击数字可写一个"覆盖值"到 localStorage（key=mh-year-target-{habitId}，不动 types.ts），
+//   覆盖后显示为海蓝并带 ✕ 可清除恢复联动；已打卡 = 当年 habitRecords 总数
 // - 习惯行右键菜单：编辑名称 / 更换图标 / 设置月目标 / 删除（全部行内编辑，Electron 下禁用 prompt）
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
@@ -56,7 +60,7 @@ export default function Habits({
   onToggleCheck: (habitId: string, date: string) => void // 幂等切换打卡
 }) {
   /* ---------- 视图与新建表单 ---------- */
-  const [view, setView] = useState<'week' | 'month'>('week')
+  const [view, setView] = useState<'week' | 'month' | 'year'>('week')
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newIcon, setNewIcon] = useState(PRESET_ICONS[0])
@@ -67,6 +71,52 @@ export default function Habits({
   const [nameDraft, setNameDraft] = useState('')
   const [editingTargetId, setEditingTargetId] = useState<string | null>(null)
   const [targetDraft, setTargetDraft] = useState('')
+
+  /* ---------- 年目标覆盖值（localStorage 持久化，不改动 types.ts） ----------
+     key = mh-year-target-{habitId}；未设置 → 显示动态计算值（灰显）；
+     设置后 → 显示覆盖值（海蓝，可 ✕ 清除恢复动态联动） */
+  const YT_PREFIX = 'mh-year-target-'
+  const [yearOverrides, setYearOverrides] = useState<Record<string, number>>({})
+  const [editingYearId, setEditingYearId] = useState<string | null>(null) // 年目标行内编辑中的习惯 id
+  const [yearDraft, setYearDraft] = useState('')
+
+  // 挂载时扫描 localStorage，读回全部年目标覆盖值
+  useEffect(() => {
+    try {
+      const out: Record<string, number> = {}
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (!k || !k.startsWith(YT_PREFIX)) continue
+        const n = Math.floor(Number(localStorage.getItem(k)))
+        if (n > 0) out[k.slice(YT_PREFIX.length)] = n
+      }
+      setYearOverrides(out)
+    } catch {
+      /* localStorage 不可用时静默降级为动态值 */
+    }
+  }, [])
+
+  // 写入 / 清除覆盖值（localStorage 与组件状态同步）
+  const saveYearOverride = (habitId: string, n: number) => {
+    try {
+      localStorage.setItem(YT_PREFIX + habitId, String(n))
+    } catch {
+      /* 忽略写入失败 */
+    }
+    setYearOverrides((p) => ({ ...p, [habitId]: n }))
+  }
+  const clearYearOverride = (habitId: string) => {
+    try {
+      localStorage.removeItem(YT_PREFIX + habitId)
+    } catch {
+      /* 忽略删除失败 */
+    }
+    setYearOverrides((p) => {
+      const next = { ...p }
+      delete next[habitId]
+      return next
+    })
+  }
 
   /* ---------- 右键菜单 ---------- */
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -137,6 +187,23 @@ export default function Habits({
   const monthCount = (habitId: string) =>
     habitRecords.filter((r) => r.habitId === habitId && r.date.slice(0, 7) === todayStr.slice(0, 7)).length
 
+  // ---- 年视图统计 ----
+  // 已打卡：该习惯当年 habitRecords 总数
+  const yearCount = (habitId: string) =>
+    habitRecords.filter((r) => r.habitId === habitId && r.date.slice(0, 4) === String(now.getFullYear())).length
+
+  // 创建月~当年12月的月数（含头含尾）：去年及更早创建 = 12 个月；今年 5 月创建 = 12-4 = 8 个月
+  const yearSpan = (h: Habit) => {
+    const c = new Date(h.createdAt)
+    if (isNaN(c.getTime())) return 12 // 解析失败按全年算
+    if (c.getFullYear() < now.getFullYear()) return 12
+    if (c.getFullYear() > now.getFullYear()) return 1
+    return 12 - c.getMonth() // getMonth() 从 0 起：5 月 = 4 → 8
+  }
+
+  // 年目标动态计算值 = 月目标 × 上述月数
+  const calcYearTarget = (h: Habit) => Math.max(1, h.monthlyTarget * yearSpan(h))
+
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const monthPrefix = todayStr.slice(0, 8) // 'YYYY-MM-'，用于拼当月日期
 
@@ -163,6 +230,14 @@ export default function Habits({
     const n = Math.floor(Number(targetDraft))
     if (editingTargetId && n > 0) onUpdateHabit(editingTargetId, { monthlyTarget: n })
     setEditingTargetId(null)
+  }
+  // 提交年目标行内编辑（Enter / 失焦）：正整数 = 存覆盖值；空 / 非法 = 清除覆盖恢复动态联动
+  const commitYearTarget = () => {
+    if (!editingYearId) return
+    const n = Math.floor(Number(yearDraft))
+    if (yearDraft.trim() !== '' && n > 0) saveYearOverride(editingYearId, n)
+    else clearYearOverride(editingYearId)
+    setEditingYearId(null)
   }
   // 提交右键菜单里的月目标输入
   const applyMenuTarget = () => {
@@ -206,14 +281,14 @@ export default function Habits({
             </button>
           )}
           <div className="flex rounded-lg bg-black/5 dark:bg-white/5 p-0.5 text-xs">
-            {(['week', 'month'] as const).map((v) => (
+            {(['week', 'month', 'year'] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
                 className={`px-3 py-1.5 rounded-md transition-colors
                   ${view === v ? 'bg-haruto-sea text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
               >
-                {{ week: '周', month: '月' }[v]}
+                {{ week: '周', month: '月', year: '年' }[v]}
               </button>
             ))}
           </div>
@@ -376,7 +451,7 @@ export default function Habits({
             </div>
           ))}
         </div>
-      ) : (
+      ) : view === 'month' ? (
         /* ===== 月视图：最左列竖向 1~31 日期 × 每习惯一列（竖排名 + 目标/已打叠放） ===== */
         <div className="mt-4 select-none rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-x-auto">
           <div className="min-w-max">
@@ -482,6 +557,114 @@ export default function Habits({
                 </div>
               )
             })}
+          </div>
+        </div>
+      ) : (
+        /* ===== 年视图：极简透明边框表格 —— 习惯名 / 已打卡 / 年目标 三列 ===== */
+        <div className="mt-4 select-none rounded-xl border border-neutral-200/60 dark:border-neutral-700/60 overflow-hidden">
+          {/* 表头 */}
+          <div className="grid grid-cols-[1fr_110px_150px] bg-black/[0.02] dark:bg-white/[0.04]">
+            <div className="px-4 py-2.5 text-[10px] text-neutral-400">{now.getFullYear()} 年 · 习惯</div>
+            <div className="py-2.5 text-center text-[10px] text-neutral-400">已打卡</div>
+            <div className="py-2.5 text-center text-[10px] text-neutral-400">年目标</div>
+          </div>
+          {/* 数据行：右键可呼出习惯菜单；习惯名支持行内改名（与周/月视图共用状态） */}
+          {habits.map((h) => {
+            const done = yearCount(h.id) // 当年已打卡总数
+            const span = yearSpan(h) // 创建月~12月的月数
+            const dyn = calcYearTarget(h) // 动态年目标
+            const override = yearOverrides[h.id] // 覆盖值（undefined = 未设置）
+            const target = override ?? dyn
+            return (
+              <div
+                key={h.id}
+                onContextMenu={(e) => openMenu(e, h.id)}
+                className="grid grid-cols-[1fr_110px_150px] border-t border-neutral-200/60 dark:border-neutral-700/60
+                  items-center hover:bg-black/[0.015] dark:hover:bg-white/[0.02] transition-colors"
+              >
+                {/* 第一列：图标 + 习惯名（行内改名） */}
+                <div className="px-4 py-3 flex items-center gap-2 min-w-0">
+                  <span className="text-base shrink-0">{h.icon}</span>
+                  {editingNameId === h.id ? (
+                    <input
+                      autoFocus
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onBlur={commitName}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitName()
+                        if (e.key === 'Escape') setEditingNameId(null)
+                      }}
+                      className="min-w-0 flex-1 text-xs rounded-md border border-haruto-sea bg-transparent px-2 py-1 outline-none"
+                    />
+                  ) : (
+                    <span className="truncate text-sm">{h.name}</span>
+                  )}
+                </div>
+                {/* 已打卡：达到年目标后变茶绿以示达成 */}
+                <div
+                  className={`text-center text-sm font-bold tabular-nums select-none
+                    ${done >= target ? 'text-[#6a994e]' : 'text-neutral-700 dark:text-neutral-200'}`}
+                >
+                  {done}
+                </div>
+                {/* 年目标：未覆盖 = 灰显动态值；已覆盖 = 海蓝 + ✕ 清除；点击数字行内编辑 */}
+                <div className="py-2 flex items-center justify-center gap-1.5">
+                  {editingYearId === h.id ? (
+                    /* 行内编辑：回车保存，Esc 取消；留空回车 = 清除覆盖 */
+                    <input
+                      autoFocus
+                      type="number"
+                      min={1}
+                      value={yearDraft}
+                      onChange={(e) => setYearDraft(e.target.value)}
+                      onBlur={commitYearTarget}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitYearTarget()
+                        if (e.key === 'Escape') setEditingYearId(null)
+                      }}
+                      placeholder={String(dyn)}
+                      title={`动态计算值：${dyn}`}
+                      className="w-16 rounded-md border border-haruto-sea bg-transparent px-1.5 py-1 text-center
+                        text-xs tabular-nums outline-none"
+                    />
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => {
+                          setEditingYearId(h.id)
+                          setYearDraft(override != null ? String(override) : '')
+                        }}
+                        title={
+                          override != null
+                            ? '覆盖值，点击修改'
+                            : `动态计算 = 月目标 ${h.monthlyTarget} × ${span} 个月，点击设置覆盖值`
+                        }
+                        className={`text-sm font-bold tabular-nums hover:underline select-none
+                          ${override != null ? 'text-haruto-sea' : 'text-neutral-400'}`}
+                      >
+                        {target}
+                      </button>
+                      {override != null && (
+                        /* 清除覆盖值 → 恢复与月目标联动的动态计算 */
+                        <button
+                          onClick={() => clearYearOverride(h.id)}
+                          title="清除覆盖值，恢复动态计算"
+                          className="w-4 h-4 rounded-full grid place-items-center text-[9px] text-neutral-400
+                            hover:text-red-400 hover:bg-red-400/10 transition-colors select-none"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {/* 底部说明：解释年目标的动态算法与覆盖机制 */}
+          <div className="border-t border-neutral-200/60 dark:border-neutral-700/60 px-4 py-2 text-[10px] text-neutral-400 select-none">
+            年目标默认 = 月目标 ×（创建月～12 月的月数，含头尾）→ 灰显；点击数字可覆盖（海蓝，✕ 恢复联动）
           </div>
         </div>
       )}

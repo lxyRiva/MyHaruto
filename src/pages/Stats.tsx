@@ -5,7 +5,9 @@
  * 2. 番茄钟饼图：各任务专注时长占比（图例右侧，色块取固定「名家色板」按序循环分配）
  *    - 日视图：按具体任务（含子任务）统计
  *    - 月/年视图：仅按主任务统计，子任务时长沿 parentTaskId 链向上归并
- * 3. 月度热力图（GitHub 风格）：当月每天专注分钟，海蓝色系渐变
+ * 3. 年度专注热力图（GitHub 贡献图样式）：7 行（周一~周日）× 最多 53 列（周），
+ *    纯 div 网格渲染（相对 ECharts 可精确控制 w-3 h-3 / gap-[2px] 的格子尺寸与月份标签），
+ *    悬停 tooltip 显示「日期 + 专注 N 分钟」，未来日期格子不渲染
  * 4. 入睡折线图（仅月视图）：y 轴 21:00 → 05:00 连续
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -40,11 +42,17 @@ const TEXT_PRIMARY = '#666';
 const TEXT_SECONDARY = '#999';
 /** 热力图星期标签：周一 → 周日 */
 const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+/**
+ * 年度热力图 5 级颜色（0 分钟 = 最浅，最深为海蓝）。
+ * 注：0 分钟档在暗色下改用深灰底（#232a30）以免整片浅色刺眼，数据档颜色严格不变。
+ */
+const HEAT_LEVELS = ['#eef4f8', '#cfe0ea', '#9dc0d4', '#5f94b8', '#3d7ea6'] as const;
+// 0 分钟档的暗色替代色为 #232a30（写在类名里：bg-[#eef4f8] dark:bg-[#232a30]，Tailwind 需字面量）
 
 /** 数字补零为两位字符串 */
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 
-/** Date → 'YYYY-MM-DD' */
+/** Date → 'YYYY-MM-DD'（补零，与 date input 的取值格式一致） */
 const toISODate = (d: Date): string =>
   `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
@@ -79,14 +87,24 @@ function EmptyTip() {
   );
 }
 
-/** 通用图表卡片：标题 + 内容区 */
-function ChartCard({ title, children }: { title: string; children: ReactNode }) {
+/** 通用图表卡片：标题（可选右侧附加信息）+ 内容区 */
+function ChartCard({ title, extra, children }: { title: string; extra?: ReactNode; children: ReactNode }) {
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-      <h2 className="mb-2 text-sm font-medium text-neutral-900 dark:text-neutral-100">{title}</h2>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{title}</h2>
+        {extra /* 标题右侧附加信息（如年度总分钟数） */}
+      </div>
       {children}
     </section>
   );
+}
+
+/** 年度热力图单元格数据（null = 该槽位不渲染：未来日期或首周溢出的上年日期） */
+interface HeatCell {
+  iso: string; // 'YYYY-MM-DD'
+  minutes: number; // 当日专注总分钟
+  weekday: number; // 0 = 周一 … 6 = 周日
 }
 
 /* ==================== 页面组件 ==================== */
@@ -99,10 +117,13 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
   /** 当前视图：日 / 月 / 年 */
   const [viewMode, setViewMode] = useState<'day' | 'month' | 'year'>('month');
 
-  /** 三个图表的 DOM 挂载点 */
+  /** 饼图 / 折线图的 DOM 挂载点（年度热力图为纯 div 网格，无需 ECharts） */
   const pieRef = useRef<HTMLDivElement>(null);
-  const heatmapRef = useRef<HTMLDivElement>(null);
   const sleepRef = useRef<HTMLDivElement>(null);
+  /** 年度热力图整体容器（自定义 tooltip 以它为定位基准） */
+  const heatWrapRef = useRef<HTMLDivElement>(null);
+  /** 热力图自定义 tooltip 状态（x/y 为相对容器的坐标） */
+  const [heatTip, setHeatTip] = useState<{ x: number; y: number; text: string } | null>(null);
 
   /** 时间基准（页面加载时刻），用于确定「今天 / 本月 / 今年」的统计范围 */
   const now = useMemo(() => new Date(), []);
@@ -170,23 +191,80 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
       });
   }, [periodSessions, viewMode, taskMap]);
 
-  /* ---------- 2. 月热力图数据 ---------- */
-  /** 本月每天的专注总分钟数（热力图固定展示「当月」，与顶部切换无关） */
-  const monthMinutesByDay = useMemo(() => {
+  /* ---------- 2. 年度热力图数据（GitHub 贡献图样式） ---------- */
+  /** 今年每天的专注总分钟数（startedAt 日期部分汇总） */
+  const yearMinutesByDay = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of focusSessions) {
       const day = s.startedAt.slice(0, 10);
-      if (day.slice(0, 7) !== monthStr) continue;
+      if (day.slice(0, 4) !== yearStr) continue; // 仅统计今年
       map.set(day, (map.get(day) ?? 0) + s.minutes);
     }
     return map;
-  }, [focusSessions, monthStr]);
+  }, [focusSessions, yearStr]);
 
-  /** 本月专注总分钟（用于判断空数据） */
-  const monthTotalMinutes = useMemo(
-    () => Array.from(monthMinutesByDay.values()).reduce((sum, v) => sum + v, 0),
-    [monthMinutesByDay]
+  /** 今年专注总分钟（卡片标题右侧展示 + 空数据判断） */
+  const yearTotalMinutes = useMemo(
+    () => Array.from(yearMinutesByDay.values()).reduce((sum, v) => sum + v, 0),
+    [yearMinutesByDay]
   );
+
+  /**
+   * 年度网格几何 + 单元格 + 月份标签：
+   * - 以「今年 1 月 1 日所在周的周一」为网格左上角，7 行 × weeks 列铺满全年；
+   * - 首周若含上年末尾日期，或格子落在未来，则保留槽位但不渲染（透明占位），
+   *   以维持 CSS Grid 按列流动的对齐关系；
+   * - 月份标签放在该月 1 号所在列的顶部，同列重叠或尚未到来的月份跳过。
+   */
+  const yearGrid = useMemo(() => {
+    const year = now.getFullYear();
+    const jan1 = new Date(year, 0, 1);
+    const lead = (jan1.getDay() + 6) % 7; // 1 号在首列中的行偏移（0 = 1 号恰为周一）
+    const gridStart = new Date(year, 0, 1 - lead); // 网格左上角（Date 构造器自动跨月回退到上一年 12 月）
+    const daysInYear = Math.round((new Date(year + 1, 0, 1).getTime() - jan1.getTime()) / 86400000); // 365/366
+    const weeks = Math.ceil((lead + daysInYear) / 7); // ≤ 53 列
+
+    const cells: Array<HeatCell | null> = [];
+    let maxMinutes = 0;
+    for (let i = 0; i < weeks * 7; i++) {
+      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+      const iso = toISODate(d);
+      if (d.getFullYear() !== year || iso > todayStr) {
+        cells.push(null); // 上年溢出 / 未来日期：不渲染（透明占位保持对齐）
+        continue;
+      }
+      const minutes = yearMinutesByDay.get(iso) ?? 0;
+      maxMinutes = Math.max(maxMinutes, minutes);
+      cells.push({ iso, minutes, weekday: (d.getDay() + 6) % 7 });
+    }
+
+    const monthLabels: Array<{ col: number; name: string }> = [];
+    let lastCol = -1;
+    for (let m = 0; m < 12; m++) {
+      const first = new Date(year, m, 1);
+      if (toISODate(first) > todayStr) break; // 月份尚未开始：无可见格子，不标标签
+      const dayOfYear = Math.round((first.getTime() - jan1.getTime()) / 86400000);
+      const col = Math.floor((lead + dayOfYear) / 7); // 该月 1 号所在列
+      if (col > lastCol) {
+        monthLabels.push({ col, name: `${m + 1}月` });
+        lastCol = col; // 两月落在同一列时只保留先到的，避免文字重叠
+      }
+    }
+    return { cells, weeks, monthLabels, maxMinutes };
+  }, [now, todayStr, yearMinutesByDay]);
+
+  /**
+   * 热力分级（0~4）：0 = 无记录；1~4 按今年单日最大值的四分位自适应划分，
+   * 保证任何数据分布下颜色梯度都被充分利用（最忙的一天必为最深的海蓝）。
+   */
+  const levelOf = (minutes: number): number => {
+    if (minutes <= 0) return 0;
+    const q = Math.max(1, yearGrid.maxMinutes) / 4;
+    if (minutes <= q) return 1;
+    if (minutes <= q * 2) return 2;
+    if (minutes <= q * 3) return 3;
+    return 4;
+  };
 
   /* ---------- 3. 入睡折线图数据 ---------- */
   /** 本月入睡记录：几号 → 'HH:MM'（仅保留日期在当月且格式可解析的记录） */
@@ -248,74 +326,7 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
       });
     }
 
-    /* ---------- 2. 月度专注热力图（GitHub 风格） ---------- */
-    if (monthTotalMinutes > 0) {
-      // 当月 1 号前需空出的格子数（周一起始）
-      const firstDayOffset = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
-      const weekCount = Math.ceil((firstDayOffset + daysInMonth) / 7);
-
-      // 单元格数据：[第几周(列), 行下标(已翻转让周一对齐 y 轴顶部), 分钟数, 几号]
-      // 修复：仅收录分钟数 > 0 的格子，0 值格子不进 data（不渲染），
-      // 避免无记录的日期也被 visualMap 按 min=0 染上底色。
-      const cells: Array<[number, number, number, number]> = [];
-      let maxDayMinutes = 0;
-      for (let day = 1; day <= daysInMonth; day++) {
-        const minutes = monthMinutesByDay.get(`${monthStr}-${pad2(day)}`) ?? 0;
-        if (minutes <= 0) continue; // 无记录的日期直接跳过，不生成格子
-        maxDayMinutes = Math.max(maxDayMinutes, minutes);
-        const weekday = (new Date(year, monthIndex, day).getDay() + 6) % 7; // 0 = 周一
-        const weekIndex = Math.floor((firstDayOffset + day - 1) / 7);
-        cells.push([weekIndex, WEEKDAY_LABELS.length - 1 - weekday, minutes, day]);
-      }
-
-      mountChart(heatmapRef.current, {
-        backgroundColor: 'transparent',
-        tooltip: {
-          trigger: 'item',
-          formatter: (params) => {
-            const p = Array.isArray(params) ? params[0] : params;
-            const v = p.value as number[]; // [第几周, 行下标, 分钟数, 几号]
-            return `${monthIndex + 1}月${v[3]}日<br/>专注 ${v[2]} 分钟`;
-          },
-        },
-        grid: { left: 44, right: 12, top: 8, bottom: 44 },
-        xAxis: {
-          type: 'category',
-          data: Array.from({ length: weekCount }, (_, i) => `第${i + 1}周`),
-          axisLine: { show: false },
-          axisTick: { show: false },
-          splitArea: { show: false },
-          axisLabel: { color: TEXT_SECONDARY, fontSize: 11 },
-        },
-        yAxis: {
-          type: 'category',
-          data: [...WEEKDAY_LABELS].reverse(), // 自上而下：周一 → 周日
-          axisLine: { show: false },
-          axisTick: { show: false },
-          splitArea: { show: false },
-          axisLabel: { color: TEXT_SECONDARY, fontSize: 11 },
-        },
-        visualMap: {
-          min: 0,
-          max: Math.max(1, maxDayMinutes), // max = 当日最大值（全 0 时兜底为 1）
-          calculable: false,
-          orient: 'horizontal',
-          left: 'center',
-          bottom: 0,
-          text: ['多', '少'],
-          textStyle: { color: TEXT_SECONDARY, fontSize: 11 },
-          inRange: { color: ['#e8f1f7', '#c3d9e8', '#94bcd6', '#5f94b8', OCEAN_BLUE] }, // 海蓝渐变（0 值格子不进 data，不参与渲染）
-        },
-        series: [
-          {
-            type: 'heatmap',
-            data: cells,
-            itemStyle: { borderRadius: 3, borderColor: 'transparent', borderWidth: 2 },
-            emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(51, 112, 255, 0.4)' } },
-          },
-        ],
-      });
-    }
+    /* ---------- 2. 年度专注热力图：纯 div 网格渲染（见下方 JSX），此处无需 ECharts ---------- */
 
     /* ---------- 3. 入睡时间折线图（仅月视图） ---------- */
     if (viewMode === 'month' && monthBedtimeByDay.size > 0) {
@@ -390,7 +401,7 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
       window.removeEventListener('resize', handleResize);
       charts.forEach((chart) => chart.dispose());
     };
-  }, [viewMode, now, pieData, monthMinutesByDay, monthTotalMinutes, monthBedtimeByDay]);
+  }, [viewMode, now, pieData, monthBedtimeByDay]);
 
   /** 三段切换选项 */
   const viewOptions: Array<{ key: 'day' | 'month' | 'year'; label: string }> = [
@@ -398,6 +409,19 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
     { key: 'month', label: '月' },
     { key: 'year', label: '年' },
   ];
+
+  /** 热力图格子悬停：计算相对容器的坐标并显示自定义 tooltip（日期 + 专注分钟） */
+  const showHeatTip = (e: React.MouseEvent<HTMLDivElement>, cell: HeatCell) => {
+    const wrap = heatWrapRef.current;
+    if (!wrap) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const cellRect = e.currentTarget.getBoundingClientRect();
+    setHeatTip({
+      x: cellRect.left - wrapRect.left + cellRect.width / 2, // 格子中心
+      y: cellRect.top - wrapRect.top, // 格子上沿
+      text: `${cell.iso} ${WEEKDAY_LABELS[cell.weekday]} · 专注 ${cell.minutes} 分钟`,
+    });
+  };
 
   return (
     <div className="p-6">
@@ -431,10 +455,107 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
           )}
         </ChartCard>
 
-        {/* 卡片二：月度专注热力图（当月） */}
-        <ChartCard title="本月专注热力图">
-          {monthTotalMinutes > 0 ? (
-            <div ref={heatmapRef} style={{ height: 240, width: '100%' }} />
+        {/* 卡片二：年度专注热力图（GitHub 贡献图样式，标题右侧显示年度总分钟数） */}
+        <ChartCard
+          title={`${yearStr} 年专注热力图`}
+          extra={
+            <span className="text-xs text-neutral-400">
+              年度专注 <b className="text-haruto-sea tabular-nums">{yearTotalMinutes}</b> 分钟
+            </span>
+          }
+        >
+          {yearTotalMinutes > 0 ? (
+            <div className="overflow-x-auto pb-1">
+              {/* 整体容器：tooltip 以它为定位基准 */}
+              <div ref={heatWrapRef} className="relative w-fit min-w-full">
+                {/* 月份标签行（对齐各自月份 1 号所在的列；左侧留出星期标签的宽度） */}
+                <div className="flex">
+                  <div className="w-7 shrink-0" />
+                  {/* 标签为绝对定位，容器需显式宽度 = 网格总宽，供 w-fit 外壳正确计算 */}
+                  <div className="relative h-4" style={{ width: yearGrid.weeks * 14 - 2 }}>
+                    {yearGrid.monthLabels.map(({ col, name }) => (
+                      <span
+                        key={name}
+                        className="absolute top-0 whitespace-nowrap text-[10px] text-neutral-400"
+                        style={{ left: col * 14 }} // 每列宽 12px + 间距 2px = 14px
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 主体：左侧星期标签（只标 周一/周三/周五）+ 7 行 × N 列网格 */}
+                <div className="flex">
+                  <div className="flex w-7 shrink-0 flex-col gap-[2px] text-[9px] leading-none text-neutral-400">
+                    {WEEKDAY_LABELS.map((w, row) => (
+                      <div key={w} className="flex h-3 items-center">
+                        {row === 0 || row === 2 || row === 4 ? w : ''}
+                      </div>
+                    ))}
+                  </div>
+                  {/* grid-auto-flow: column → 依次按「列」填充，每 7 格正好是一周（周一在上、周日在下） */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: `repeat(${yearGrid.weeks}, 12px)`,
+                      gridAutoRows: '12px',
+                      gap: '2px',
+                      gridAutoFlow: 'column',
+                    }}
+                  >
+                    {yearGrid.cells.map((cell, i) =>
+                      cell ? (
+                        <div
+                          key={cell.iso}
+                          onMouseEnter={(e) => showHeatTip(e, cell)}
+                          onMouseLeave={() => setHeatTip(null)}
+                          className={`w-3 h-3 rounded-[2px] transition-transform hover:scale-125 ${
+                            cell.iso === todayStr ? 'ring-1 ring-haruto-sea ring-offset-0' : ''
+                          } ${levelOf(cell.minutes) === 0 ? 'bg-[#eef4f8] dark:bg-[#232a30]' : ''}`}
+                          style={
+                            levelOf(cell.minutes) > 0
+                              ? { backgroundColor: HEAT_LEVELS[levelOf(cell.minutes)] }
+                              : undefined
+                          }
+                        />
+                      ) : (
+                        // 透明占位：上年溢出 / 未来日期不渲染，但保留槽位以维持列对齐
+                        <div key={`empty-${i}`} className="w-3 h-3 rounded-[2px]" />
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* 图例（少 → 多）+ 年度摘要 */}
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-1 text-[10px] text-neutral-400">
+                    少
+                    {HEAT_LEVELS.map((c, idx) => (
+                      <span
+                        key={c}
+                        className={`h-3 w-3 rounded-[2px] ${idx === 0 ? 'bg-[#eef4f8] dark:bg-[#232a30]' : ''}`}
+                        style={idx > 0 ? { backgroundColor: c } : undefined}
+                      />
+                    ))}
+                    多
+                  </div>
+                  <div className="text-[10px] text-neutral-400">
+                    已专注 {yearMinutesByDay.size} 天 · 共 {yearTotalMinutes} 分钟
+                  </div>
+                </div>
+
+                {/* 自定义 tooltip：跟随格子位置，显示「日期 + 专注 N 分钟」 */}
+                {heatTip && (
+                  <div
+                    className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-neutral-800 px-2 py-1 text-xs text-white shadow-lg dark:bg-neutral-700"
+                    style={{ left: heatTip.x, top: heatTip.y - 4 }}
+                  >
+                    {heatTip.text}
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             <EmptyTip />
           )}
