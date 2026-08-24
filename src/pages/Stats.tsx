@@ -99,11 +99,11 @@ function ChartCard({ title, extra, children }: { title: string; extra?: ReactNod
   );
 }
 
-/** 年度热力图单元格数据（null = 该槽位不渲染：未来日期或首周溢出的上年日期） */
+  /** 年度热力图单元格数据（未来日期 minutes=0，全年满格渲染） */
 interface HeatCell {
   iso: string; // 'YYYY-MM-DD'
   minutes: number; // 当日专注总分钟
-  weekday: number; // 0 = 周一 … 6 = 周日
+  weekday: number; // 预留字段（竖排日历式未使用）
 }
 
 /* ==================== 页面组件 ==================== */
@@ -219,25 +219,21 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
     const jan1 = new Date(year, 0, 1);
     const daysInYear = Math.round((new Date(year + 1, 0, 1).getTime() - jan1.getTime()) / 86400000); // 365/366
 
-    const cells: Array<HeatCell | null> = [];
+    const cells: Array<HeatCell> = []
     let maxMinutes = 0;
     for (let i = 0; i < daysInYear; i++) {
       const d = new Date(year, 0, 1 + i);
       const iso = toISODate(d);
-      if (iso > todayStr) {
-        cells.push(null); // 未来日期：不渲染（透明占位保持对齐）
-        continue;
-      }
-      const minutes = yearMinutesByDay.get(iso) ?? 0;
+      // 全年满格渲染：未来日期同样显示为「无记录」最浅色（参考图全年 26 列完整可见）
+      const minutes = iso > todayStr ? 0 : (yearMinutesByDay.get(iso) ?? 0);
       maxMinutes = Math.max(maxMinutes, minutes);
       cells.push({ iso, minutes, weekday: 0 });
     }
 
-    // 月份标签：只在 1/4/7/10 月的 1 号所在列（每 3 个月一个）
+    // 月份标签：只在 1/4/7/10 月的 1 号所在列（每 3 个月一个；全年满格所以全年都标）
     const monthLabels: Array<{ col: number; name: string }> = [];
     for (const m of [0, 3, 6, 9]) {
       const first = new Date(year, m, 1);
-      if (toISODate(first) > todayStr) break; // 该月尚未开始
       const dayOfYear = Math.round((first.getTime() - jan1.getTime()) / 86400000);
       monthLabels.push({ col: Math.floor(dayOfYear / 14), name: `${m + 1}月` });
     }
@@ -245,15 +241,15 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
   }, [now, todayStr, yearMinutesByDay]);
 
   /**
-   * 热力分级（0~4）：0 = 无记录；1~4 按今年单日最大值的四分位自适应划分，
-   * 保证任何数据分布下颜色梯度都被充分利用（最忙的一天必为最深的海蓝）。
+   * 热力分级（0~4）：固定时长阈值（参考 GitHub 贡献图的经验分级）：
+   * 0 = 无记录；1 = 1~30 分钟（最浅数据档）；2 = 31~60；3 = 61~120；4 = 120+ 分钟（最深）。
+   * 不随全年最大值自适应——避免只记录 1 分钟时颜色直接顶格的不合理观感。
    */
   const levelOf = (minutes: number): number => {
     if (minutes <= 0) return 0;
-    const q = Math.max(1, yearGrid.maxMinutes) / 4;
-    if (minutes <= q) return 1;
-    if (minutes <= q * 2) return 2;
-    if (minutes <= q * 3) return 3;
+    if (minutes <= 30) return 1;
+    if (minutes <= 60) return 2;
+    if (minutes <= 120) return 3;
     return 4;
   };
 
@@ -479,26 +475,21 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
                 <div className="flex gap-[2px]">
                   {Array.from({ length: yearGrid.cols }, (_, c) => (
                     <div key={c} className="flex flex-col gap-[2px]">
-                      {yearGrid.cells.slice(c * 14, c * 14 + 14).map((cell, i) =>
-                        cell ? (
-                          <div
-                            key={cell.iso}
-                            onMouseEnter={(e) => showHeatTip(e, cell)}
-                            onMouseLeave={() => setHeatTip(null)}
-                            className={`w-3 h-3 rounded-[2px] transition-transform hover:scale-125 ${
-                              cell.iso === todayStr ? 'ring-1 ring-haruto-sea ring-offset-0' : ''
-                            } ${levelOf(cell.minutes) === 0 ? 'bg-[#eef4f8] dark:bg-[#232a30]' : ''}`}
-                            style={
-                              levelOf(cell.minutes) > 0
-                                ? { backgroundColor: HEAT_LEVELS[levelOf(cell.minutes)] }
-                                : undefined
-                            }
-                          />
-                        ) : (
-                          // 透明占位：未来日期不渲染，但保留槽位以维持列对齐
-                          <div key={`empty-${c}-${i}`} className="w-3 h-3 rounded-[2px]" />
-                        )
-                      )}
+                      {yearGrid.cells.slice(c * 14, c * 14 + 14).map((cell) => (
+                        <div
+                          key={cell.iso}
+                          onMouseEnter={(e) => showHeatTip(e, cell)}
+                          onMouseLeave={() => setHeatTip(null)}
+                          className={`w-3 h-3 rounded-[2px] transition-transform hover:scale-125 ${
+                            cell.iso === todayStr ? 'ring-1 ring-haruto-sea ring-offset-0' : ''
+                          } ${levelOf(cell.minutes) === 0 ? 'bg-[#eef4f8] dark:bg-[#232a30]' : ''}`}
+                          style={
+                            levelOf(cell.minutes) > 0
+                              ? { backgroundColor: HEAT_LEVELS[levelOf(cell.minutes)] }
+                              : undefined
+                          }
+                        />
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -506,15 +497,16 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
                 {/* 图例（少 → 多）+ 年度摘要 */}
                 <div className="mt-2 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-1 text-[10px] text-neutral-400">
-                    少
+                    0
                     {HEAT_LEVELS.map((c, idx) => (
                       <span
                         key={c}
+                        title={['无记录', '1~30分钟', '31~60分钟', '61~120分钟', '120分钟以上'][idx]}
                         className={`h-3 w-3 rounded-[2px] ${idx === 0 ? 'bg-[#eef4f8] dark:bg-[#232a30]' : ''}`}
                         style={idx > 0 ? { backgroundColor: c } : undefined}
                       />
                     ))}
-                    多
+                    2小时+
                   </div>
                   <div className="text-[10px] text-neutral-400">
                     已专注 {yearMinutesByDay.size} 天 · 共 {yearTotalMinutes} 分钟

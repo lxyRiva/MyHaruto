@@ -15,6 +15,15 @@ function addDaysStr(base: string, n: number) {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 
+// 下一个周X（target: 1=一 … 5=五；今天恰为周X时返回下周X）
+function nextWeekdayStr(target: number, base: string) {
+  const [y, m, d] = base.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  const diff = (((target - dt.getDay()) % 7) + 7) % 7 || 7
+  dt.setDate(dt.getDate() + diff)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
 const PRIORITY_DOT: Record<string, string> = { high: 'bg-red-500', mid: 'bg-amber-400', low: 'bg-sky-400' }
 const PRIORITY_LABEL: Record<string, string> = { high: '高', mid: '中', low: '低', none: '无' }
 
@@ -42,15 +51,23 @@ function buildMenu(opts: {
   onDelete: (id: string) => void
   onPomodoro: (t: Task) => void
   onAddSub: (t: Task) => void // 触发行内添加子任务输入
+  onPickDate: (t: Task) => void // 触发行内日期选择
 }): MenuEntry[] {
-  const { task, tags, linkable, onUpdate, onDelete, onPomodoro, onAddSub } = opts
+  const { task, tags, linkable, onUpdate, onDelete, onPomodoro, onAddSub, onPickDate } = opts
   const today = todayStr()
   const e: MenuEntry[] = [
-    { header: true, label: '设置日期' },
-    { label: '今天', onClick: () => onUpdate(task.id, { dueDate: today }) },
-    { label: '明天', onClick: () => onUpdate(task.id, { dueDate: addDaysStr(today, 1) }) },
-    { label: '下周', onClick: () => onUpdate(task.id, { dueDate: addDaysStr(today, 7) }) },
-    { label: '清除日期', onClick: () => onUpdate(task.id, { dueDate: null }) },
+    {
+      label: '设置日期',
+      submenu: [
+        { label: '今天', onClick: () => onUpdate(task.id, { dueDate: today }) },
+        { label: '明天', onClick: () => onUpdate(task.id, { dueDate: addDaysStr(today, 1) }) },
+        { label: '后天', onClick: () => onUpdate(task.id, { dueDate: addDaysStr(today, 2) }) },
+        { label: '下周三', onClick: () => onUpdate(task.id, { dueDate: nextWeekdayStr(3, today) }) },
+        { label: '下周五', onClick: () => onUpdate(task.id, { dueDate: nextWeekdayStr(5, today) }) },
+        { label: '选择日期…', onClick: () => onPickDate(task) },
+        { label: '清除日期', onClick: () => onUpdate(task.id, { dueDate: null }) },
+      ],
+    },
     { header: true, label: '设置优先级' },
     ...(['high', 'mid', 'low', 'none'] as const).map((p) => ({
       label: `${PRIORITY_LABEL[p]}${(task.priority ?? 'none') === p ? ' ✓' : ''}`,
@@ -112,6 +129,7 @@ export function TaskNode(props: {
   const [editing, setEditing] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [adding, setAdding] = useState(false)
+  const [pickingDate, setPickingDate] = useState(false) // 行内日期选择（右键"选择日期…"）
 
   const doneChildren = children.filter((c) => c.done).length
   const pct = children.length ? Math.round((doneChildren / children.length) * 100) : 0
@@ -210,6 +228,27 @@ export function TaskNode(props: {
         </div>
       )}
 
+      {/* 行内日期选择（右键 → 设置日期 → 选择日期…） */}
+      {pickingDate && (
+        <div style={{ paddingLeft: `${(depth + 1) * 22 + 24}px` }} className="py-1 pr-3 flex items-center gap-2">
+          <input
+            autoFocus
+            type="date"
+            defaultValue={task.dueDate ?? ''}
+            onChange={(e) => {
+              if (e.target.value) {
+                onUpdate(task.id, { dueDate: e.target.value })
+                setPickingDate(false)
+              }
+            }}
+            onKeyDown={(e) => { if (e.key === 'Escape') setPickingDate(false) }}
+            onBlur={() => setPickingDate(false)}
+            className="text-[13px] rounded-lg border border-haruto-sea/50 bg-transparent px-2 py-1 outline-none"
+          />
+          <span className="text-[10px] text-neutral-400">选择后自动保存，Esc 取消</span>
+        </div>
+      )}
+
       {/* 行内添加子任务输入（右键菜单"添加子任务"触发） */}
       {adding && (
         <div style={{ paddingLeft: `${(depth + 1) * 22 + 40}px` }} className="py-1 pr-3">
@@ -242,7 +281,7 @@ export function TaskNode(props: {
         <FloatingMenu
           x={menu.x}
           y={menu.y}
-          entries={buildMenu({ task, tags, linkable, onUpdate, onDelete, onPomodoro, onAddSub: () => setAdding(true) })}
+          entries={buildMenu({ task, tags, linkable, onUpdate, onDelete, onPomodoro, onAddSub: () => setAdding(true), onPickDate: () => setPickingDate(true) })}
           onClose={() => setMenu(null)}
         />
       )}

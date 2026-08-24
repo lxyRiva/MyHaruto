@@ -1,15 +1,21 @@
 // 重要日页：左栏重要日（🎂生日/🎉节日/📌自定义）竖版图文卡管理，右栏生理期迷你月历（记录 + 预测）
-// 卡片：图上字下（图区 60% 插画 / 文区 40% 标题+日期+倒计时胶囊），网格 2~3 列，
-//       白底圆角 xl 柔和阴影，hover 轻微上浮；右键菜单（编辑/归档/删除）、已归档折叠区保留。
-// 图样：每类型 = 3 张 PNG 插画（assets/days/，排前）+ 原自绘 SVG 变体（在后），
-//       选择索引存 localStorage（key=mh-day-style-{id}，不污染 note 数据）；
-//       旧数据索引一次性 +PNG_COUNT 迁移（见挂载 effect，标记 key 防重复偏移）。
+// 卡片：图上字下（图区 60% PNG 插画 / 文区 40% 标题+日期+倒计时胶囊），网格 2~3 列，
+//       白底圆角 xl 柔和阴影，hover 轻微上浮；右键菜单（编辑/重复/日期/置顶/删除，带二级子菜单）、已归档折叠区保留。
+// 图样：每类型仅 3 张 PNG 插画（public/assets/days/），索引存 localStorage（key=mh-day-style-{id}，
+//       不污染 note 数据）；任何旧索引（SVG 时代序号 / PNG+SVG 混排下标）读取时统一 mod 3 归入对应 PNG。
+// 右键菜单二级子菜单：重复▸（不重复/每年/每月/每周/每天——「每年」= types.ts 的 repeatYearly，
+//       每月/每周/每天本轮仅 UI，存 mh-day-repeat-{id}，待 types 扩展字段后接入计算）；
+//       日期▸（公历/农历，存 mh-day-lunar-{id}，true=农历，仅影响显示）。
+// 置顶：存 mh-day-pinned-{id}，置顶卡片排列表最前并带 📌 小标记。
+// 农历：标记为农历的卡片显示「农历X月X日」（solarlunar.solar2lunar 的 monthCn/dayCn），
+//       编辑表单选日期后实时预览；存储与倒计时计算始终保持公历原值（小字提示「按公历日期提醒」）。
 // 生理期：点击日期弹出小气泡（开始/结束确认），绝不自动测算结束——无 endDate 只标记开始日，不蔓延；
 //        预测（浅红虚线）仅作显示建议。注意：经期预测只是日历推算，仅供参考，非医疗建议。
 // 所有编辑均为行内表单（Electron 下禁用 prompt/alert）。
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { ImportantDay, PeriodRecord } from '../types'
+import solarlunar from 'solarlunar'
 
 /* ---------- 日期工具（全部走本地时区，避免 toISOString 的 UTC 偏移问题） ---------- */
 
@@ -45,11 +51,8 @@ const TYPE_OPTIONS: { value: ImportantDay['type']; label: string }[] = [
   { value: 'custom', label: '📌 自定义' },
 ]
 
-/* ---------- 图样变体表：PNG 插画（前）+ 自绘 SVG（后） ---------- */
+/* ---------- 图样变体表：仅 PNG 插画（每类型 3 张，public/assets/days/） ---------- */
 
-// 每类型 PNG 插画数量（public/assets/days/，构建后位于 assets/days/）：统一 3 张，排在 SVG 之前。
-// 该常量同时用于新旧索引换算（旧索引迁移、DayArt 分流），勿随意改动。
-const PNG_COUNT = 3
 const PNG_VARIANTS: Record<ImportantDay['type'], { file: string; name: string }[]> = {
   birthday: [
     { file: 'birthday-balloon.png', name: '热气球' },
@@ -68,368 +71,72 @@ const PNG_VARIANTS: Record<ImportantDay['type'], { file: string; name: string }[
   ],
 }
 
-// 原自绘 SVG 变体名称（数量需与 DayArt 内的实际分支一致，顺序即 SVG 序号）
-const SVG_NAMES: Record<ImportantDay['type'], string[]> = {
-  birthday: ['蛋糕烛光', '纸杯蛋糕'],
-  festival: ['绽放烟花', '彩带星徽'],
-  custom: ['礼物盒', '星星月亮', '心愿气球'],
-}
-
-// 每类型备选总数与名称：PNG（占索引 0..PNG_COUNT-1）+ SVG（其后），图样索引即在此列表中的下标
-const VARIANT_COUNT: Record<ImportantDay['type'], number> = {
-  birthday: PNG_COUNT + SVG_NAMES.birthday.length,
-  festival: PNG_COUNT + SVG_NAMES.festival.length,
-  custom: PNG_COUNT + SVG_NAMES.custom.length,
-}
-const VARIANT_NAMES: Record<ImportantDay['type'], string[]> = {
-  birthday: [...PNG_VARIANTS.birthday.map((p) => p.name), ...SVG_NAMES.birthday],
-  festival: [...PNG_VARIANTS.festival.map((p) => p.name), ...SVG_NAMES.festival],
-  custom: [...PNG_VARIANTS.custom.map((p) => p.name), ...SVG_NAMES.custom],
-}
-
-// localStorage key 前缀：mh-day-style-{id} = 图样索引
+// localStorage key 前缀：mh-day-style-{id} = 图样索引（0..2）
 const DS_PREFIX = 'mh-day-style-'
-// 一次性迁移标记 key：旧索引 +PNG_COUNT 偏移只做一次（见挂载 effect），防止新保存的索引被二次偏移
-const DS_MIG_FLAG = 'mh-day-style-migrated-png'
+// mh-day-repeat-{id} = 重复扩展标记（monthly / weekly / daily，本轮仅 UI）
+const RP_PREFIX = 'mh-day-repeat-'
+// mh-day-lunar-{id} = 历法标记（'1' = 农历，仅影响显示）
+const LN_PREFIX = 'mh-day-lunar-'
+// mh-day-pinned-{id} = 置顶标记（'1' = 置顶，排最前 + 小标记）
+const PIN_PREFIX = 'mh-day-pinned-'
 
-// 五角星 path（以原点为中心、外径 r 的正五角星）
-function starPath(r: number): string {
-  const pts: string[] = []
-  for (let i = 0; i < 10; i++) {
-    const a = (i * Math.PI) / 5 - Math.PI / 2 // 顶点朝上
-    const rr = i % 2 === 0 ? r : r * 0.42
-    pts.push(`${i === 0 ? 'M' : 'L'}${(Math.cos(a) * rr).toFixed(1)},${(Math.sin(a) * rr).toFixed(1)}`)
-  }
-  return pts.join(' ') + ' Z'
+/* ---------- 重复模式（右键菜单「重复▸」） ---------- */
+
+// 「每年」映射 types.ts 的 repeatYearly；每月/每周/每天本轮仅 UI（localStorage），待 types 扩展
+type RepeatMode = 'none' | 'yearly' | 'monthly' | 'weekly' | 'daily'
+const REPEAT_MODES: { value: RepeatMode; label: string }[] = [
+  { value: 'none', label: '不重复' },
+  { value: 'yearly', label: '每年' },
+  { value: 'monthly', label: '每月' },
+  { value: 'weekly', label: '每周' },
+  { value: 'daily', label: '每天' },
+]
+// 每月/每周/每天（仅 UI 标记）在卡片上的小标签文案
+const REPEAT_LABELS: Record<string, string> = { monthly: '每月', weekly: '每周', daily: '每天' }
+
+/* ---------- 农历显示（solarlunar：公历→农历，仅用于展示；倒计时始终按公历原值计算） ---------- */
+
+// 公历 YYYY-MM-DD → 「农历X月X日」（如 农历八月十五）；非法 / 转换失败返回空串
+function lunarText(s: string): string {
+  const [y, m, d] = s.split('-').map(Number)
+  if (!y || !m || !d) return ''
+  const lun = solarlunar.solar2lunar(y, m, d)
+  return lun === -1 ? '' : `农历${lun.monthCn}${lun.dayCn}`
 }
 
-/* ---------- 内联 SVG 插画：每类型多幅变体，嵌入该重要日的月-日大字 ---------- */
-// 统一 viewBox 300×200、preserveAspectRatio slice：图区满铺不留白
-// 注意：此处 variant 是 SVG 内部序号（0 起）；新图样索引需先减 PNG_COUNT 再传入（见 DayArtAny）
-function DayArt({
-  type,
-  variant,
-  month,
-  day,
-}: {
-  type: ImportantDay['type']
-  variant: number
-  month: number
-  day: number
-}) {
-  const label = `${month}-${day}` // 艺术化日期大字，如 8-24
-  const svgProps = {
-    viewBox: '0 0 300 200',
-    preserveAspectRatio: 'xMidYMid slice',
-    className: 'block w-full h-full',
-  } as const
-
-  /* ---- 生日 · 变体A：双层蛋糕 + 蜡烛（暖玫红调） ---- */
-  if (type === 'birthday' && variant === 0) {
-    return (
-      <svg {...svgProps}>
-        <rect width="300" height="200" fill="#fdf1f4" />
-        {/* 背景装饰圆点 */}
-        <circle cx="42" cy="34" r="18" fill="#f9dce4" />
-        <circle cx="262" cy="152" r="26" fill="#f9dce4" opacity="0.7" />
-        <circle cx="256" cy="30" r="5" fill="#f6a5bb" />
-        <circle cx="46" cy="150" r="4" fill="#f6a5bb" />
-        {/* 日期大字 */}
-        <text x="150" y="46" textAnchor="middle" fontSize="32" fontWeight="700" fill="#d94f6e">
-          {label}
-        </text>
-        {/* 烛芯火苗 + 蜡烛 */}
-        <ellipse cx="150" cy="62" rx="5" ry="8" fill="#f5a35c" />
-        <ellipse cx="150" cy="64" rx="2.5" ry="4.5" fill="#fbd38d" />
-        <rect x="145" y="70" width="10" height="30" rx="3" fill="#ffffff" stroke="#e5637f" strokeWidth="2" />
-        {/* 上层蛋糕 + 奶油裱花 */}
-        <rect x="112" y="98" width="76" height="32" rx="8" fill="#f6a5bb" />
-        <g fill="#fbe0e8">
-          <circle cx="124" cy="100" r="7" />
-          <circle cx="138" cy="102" r="8" />
-          <circle cx="150" cy="100" r="7" />
-          <circle cx="162" cy="102" r="8" />
-          <circle cx="176" cy="100" r="7" />
-        </g>
-        {/* 下层蛋糕 + 奶油裱花 + 撒糖 */}
-        <rect x="92" y="128" width="116" height="38" rx="10" fill="#e5637f" />
-        <g fill="#f6a5bb">
-          <circle cx="104" cy="130" r="9" />
-          <circle cx="122" cy="132" r="10" />
-          <circle cx="150" cy="130" r="9" />
-          <circle cx="178" cy="132" r="10" />
-          <circle cx="196" cy="130" r="9" />
-        </g>
-        <g fill="#ffffff" opacity="0.75">
-          <rect x="112" y="146" width="6" height="2.5" rx="1.25" transform="rotate(20 115 147)" />
-          <rect x="148" y="150" width="6" height="2.5" rx="1.25" transform="rotate(-15 151 151)" />
-          <rect x="182" y="146" width="6" height="2.5" rx="1.25" transform="rotate(30 185 147)" />
-        </g>
-        {/* 底盘 */}
-        <ellipse cx="150" cy="168" rx="86" ry="9" fill="#f3cdd7" />
-      </svg>
-    )
-  }
-
-  /* ---- 生日 · 变体B：纸杯蛋糕 + 横幅日期（暖玫红调） ---- */
-  if (type === 'birthday' && variant === 1) {
-    return (
-      <svg {...svgProps}>
-        <rect width="300" height="200" fill="#fdf1f4" />
-        {/* 彩屑 */}
-        <g>
-          <circle cx="52" cy="60" r="4" fill="#f6a5bb" />
-          <circle cx="248" cy="54" r="4" fill="#e5637f" />
-          <circle cx="268" cy="120" r="3" fill="#f3cdd7" />
-          <circle cx="34" cy="120" r="3" fill="#f3cdd7" />
-          <rect x="66" y="92" width="7" height="3" rx="1.5" fill="#f6a5bb" transform="rotate(24 70 94)" />
-          <rect x="230" y="94" width="7" height="3" rx="1.5" fill="#f6a5bb" transform="rotate(-20 234 96)" />
-        </g>
-        {/* 日期横幅 */}
-        <rect x="70" y="34" width="160" height="36" rx="18" fill="#ffffff" stroke="#e5637f" strokeWidth="2" />
-        <text x="150" y="60" textAnchor="middle" fontSize="24" fontWeight="700" fill="#d94f6e">
-          {label}
-        </text>
-        {/* 奶油裱花三球 */}
-        <circle cx="118" cy="114" r="16" fill="#fbe0e8" />
-        <circle cx="182" cy="114" r="16" fill="#fbe0e8" />
-        <circle cx="150" cy="106" r="18" fill="#f6a5bb" />
-        <circle cx="150" cy="120" r="22" fill="#f6a5bb" />
-        {/* 樱桃 + 果柄 */}
-        <path d="M150 82 q6 -10 12 -12" stroke="#b97e1f" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-        <circle cx="150" cy="90" r="8" fill="#d94f6e" />
-        {/* 纸杯托（带竖纹） */}
-        <path d="M118 132 h64 l-8 42 a6 6 0 0 1 -6 5 h-36 a6 6 0 0 1 -6 -5 z" fill="#e5637f" />
-        <path d="M138 132 l4 47 M162 132 l-4 47" stroke="#d94f6e" strokeWidth="3" />
-      </svg>
-    )
-  }
-
-  /* ---- 节日 · 变体A：绽放烟花（琥珀金调） ---- */
-  if (type === 'festival' && variant === 0) {
-    return (
-      <svg {...svgProps}>
-        <rect width="300" height="200" fill="#fdf6e3" />
-        <circle cx="44" cy="160" r="22" fill="#f7ead0" />
-        <circle cx="258" cy="42" r="16" fill="#f7ead0" />
-        {/* 日期大字 */}
-        <text x="150" y="52" textAnchor="middle" fontSize="32" fontWeight="700" fill="#b97e1f">
-          {label}
-        </text>
-        {/* 主烟花：8 道放射线 + 外圈光点 */}
-        {Array.from({ length: 8 }, (_, i) => {
-          const a = (i * Math.PI) / 4
-          return (
-            <line
-              key={`l${i}`}
-              x1={150 + Math.cos(a) * 14}
-              y1={118 + Math.sin(a) * 14}
-              x2={150 + Math.cos(a) * 54}
-              y2={118 + Math.sin(a) * 54}
-              stroke="#e0a63d"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-            />
-          )
-        })}
-        {Array.from({ length: 8 }, (_, i) => {
-          const a = (i * Math.PI) / 4 + Math.PI / 8
-          return <circle key={`d${i}`} cx={150 + Math.cos(a) * 62} cy={118 + Math.sin(a) * 62} r="4" fill="#f5c76a" />
-        })}
-        <circle cx="150" cy="118" r="5" fill="#b97e1f" />
-        {/* 左上 / 右上两朵小烟花 */}
-        {Array.from({ length: 6 }, (_, i) => {
-          const a = (i * Math.PI) / 3
-          return (
-            <line
-              key={`sl${i}`}
-              x1={84 + Math.cos(a) * 6}
-              y1={74 + Math.sin(a) * 6}
-              x2={84 + Math.cos(a) * 26}
-              y2={74 + Math.sin(a) * 26}
-              stroke="#f5c76a"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-          )
-        })}
-        {Array.from({ length: 6 }, (_, i) => {
-          const a = (i * Math.PI) / 3 + 0.3
-          return (
-            <line
-              key={`sr${i}`}
-              x1={224 + Math.cos(a) * 6}
-              y1={66 + Math.sin(a) * 6}
-              x2={224 + Math.cos(a) * 24}
-              y2={66 + Math.sin(a) * 24}
-              stroke="#e0a63d"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-          )
-        })}
-        {/* 底部散落星星 */}
-        <path d={starPath(9)} transform="translate(60,152)" fill="#f5c76a" />
-        <path d={starPath(7)} transform="translate(242,150)" fill="#e0a63d" />
-        <path d={starPath(6)} transform="translate(200,170)" fill="#f5c76a" />
-      </svg>
-    )
-  }
-
-  /* ---- 节日 · 变体B：彩带 + 星徽日期（琥珀金调） ---- */
-  if (type === 'festival' && variant === 1) {
-    return (
-      <svg {...svgProps}>
-        <rect width="300" height="200" fill="#fdf6e3" />
-        {/* 飘舞彩带 */}
-        <path d="M-10 44 C 60 10, 130 74, 200 40 S 300 22, 320 48" stroke="#f5c76a" strokeWidth="6" fill="none" opacity="0.9" />
-        <path d="M-10 156 C 70 126, 140 184, 210 148 S 300 130, 320 156" stroke="#e0a63d" strokeWidth="5" fill="none" opacity="0.85" />
-        {/* 散落星星 */}
-        <path d={starPath(10)} transform="translate(52,102)" fill="#e0a63d" />
-        <path d={starPath(12)} transform="translate(250,100)" fill="#e0a63d" />
-        <path d={starPath(7)} transform="translate(84,160)" fill="#f5c76a" />
-        <path d={starPath(6)} transform="translate(222,158)" fill="#f5c76a" />
-        <circle cx="60" cy="40" r="3" fill="#e0a63d" />
-        <circle cx="240" cy="40" r="3" fill="#f5c76a" />
-        {/* 中央星徽徽章：白底 + 金环 + 虚线内圈，日期居中 */}
-        <circle cx="150" cy="102" r="48" fill="#ffffff" stroke="#e0a63d" strokeWidth="2.5" />
-        <circle cx="150" cy="102" r="40" fill="none" stroke="#f5c76a" strokeWidth="1.5" strokeDasharray="4 5" />
-        <text x="150" y="112" textAnchor="middle" fontSize="28" fontWeight="700" fill="#b97e1f">
-          {label}
-        </text>
-      </svg>
-    )
-  }
-
-  /* ---- 自定义 · 变体A：礼物盒 + 蝴蝶结（海蓝调） ---- */
-  if (type === 'custom' && variant === 0) {
-    return (
-      <svg {...svgProps}>
-        <rect width="300" height="200" fill="#eaf2f7" />
-        {/* 光斑十字星 */}
-        <path d="M56 60 v-16 M48 52 h16" stroke="#7fb3d0" strokeWidth="2.5" strokeLinecap="round" />
-        <path d="M246 74 v-14 M239 67 h14" stroke="#7fb3d0" strokeWidth="2.5" strokeLinecap="round" />
-        <circle cx="40" cy="140" r="4" fill="#7fb3d0" />
-        <circle cx="260" cy="150" r="5" fill="#9cc3da" />
-        {/* 日期大字 */}
-        <text x="150" y="58" textAnchor="middle" fontSize="32" fontWeight="700" fill="#2c5f80">
-          {label}
-        </text>
-        {/* 蝴蝶结双耳 */}
-        <ellipse cx="134" cy="86" rx="14" ry="9" fill="none" stroke="#2c5f80" strokeWidth="5" transform="rotate(-22 134 86)" />
-        <ellipse cx="166" cy="86" rx="14" ry="9" fill="none" stroke="#2c5f80" strokeWidth="5" transform="rotate(22 166 86)" />
-        {/* 盒盖 + 盒身 */}
-        <rect x="96" y="92" width="108" height="20" rx="6" fill="#2c5f80" />
-        <rect x="104" y="112" width="92" height="52" rx="8" fill="#3d7ea6" />
-        {/* 缎带（纵） */}
-        <rect x="142" y="92" width="16" height="72" fill="#eaf2f7" opacity="0.95" />
-        {/* 盒身高光点 */}
-        <circle cx="120" cy="130" r="2.5" fill="#eaf2f7" opacity="0.8" />
-        <circle cx="126" cy="138" r="2" fill="#eaf2f7" opacity="0.6" />
-        <circle cx="180" cy="146" r="2.5" fill="#eaf2f7" opacity="0.8" />
-      </svg>
-    )
-  }
-
-  /* ---- 自定义 · 变体B：星星与月亮（海蓝调） ---- */
-  if (type === 'custom' && variant === 1) {
-    return (
-      <svg {...svgProps}>
-        <rect width="300" height="200" fill="#eaf2f7" />
-        {/* 小星点 */}
-        <circle cx="58" cy="48" r="3" fill="#7fb3d0" />
-        <circle cx="246" cy="150" r="3.5" fill="#7fb3d0" />
-        <circle cx="232" cy="52" r="2.5" fill="#9cc3da" />
-        <circle cx="66" cy="150" r="2.5" fill="#9cc3da" />
-        {/* 日期大字 */}
-        <text x="150" y="46" textAnchor="middle" fontSize="30" fontWeight="700" fill="#2c5f80">
-          {label}
-        </text>
-        {/* 大星 + 伴星（微旋转错落） */}
-        <path d={starPath(40)} transform="translate(122,118) rotate(-12)" fill="#3d7ea6" />
-        <path d={starPath(18)} transform="translate(178,86)" fill="#7fb3d0" />
-        {/* 弯月（双弧相减成形） */}
-        <path d="M236 84 a32 32 0 1 0 0 60 a25 25 0 1 1 0 -60 z" fill="#7fb3d0" opacity="0.9" />
-        {/* 底部细线装饰 */}
-        <path d="M92 166 h116" stroke="#7fb3d0" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="1 8" />
-      </svg>
-    )
-  }
-
-  /* ---- 自定义 · 变体C：心愿气球（海蓝调） ---- */
-  // 球身嵌日期白字，飘带尾线
+/* ---------- 卡片图区：PNG 插画（唯一图样体系） ---------- */
+// 相对路径 assets/days/xxx.png（Electron 从 dist 加载时相对路径才正确）；object-cover 满铺图区
+function DayArtPng({ type, variant }: { type: ImportantDay['type']; variant: number }) {
+  const png = PNG_VARIANTS[type][variant] ?? PNG_VARIANTS[type][0] // 索引越界兜底第一张
   return (
-    <svg {...svgProps}>
-      <rect width="300" height="200" fill="#eaf2f7" />
-      {/* 小星点 */}
-      <circle cx="54" cy="80" r="3" fill="#7fb3d0" />
-      <circle cx="250" cy="70" r="3.5" fill="#7fb3d0" />
-      <path d={starPath(8)} transform="translate(72,44)" fill="#9cc3da" />
-      <path d={starPath(7)} transform="translate(236,128)" fill="#9cc3da" />
-      {/* 气球球身 + 高光 */}
-      <ellipse cx="150" cy="92" rx="46" ry="54" fill="#3d7ea6" />
-      <ellipse cx="134" cy="70" rx="10" ry="17" fill="#ffffff" opacity="0.35" />
-      {/* 球身内嵌日期白字 */}
-      <text x="150" y="102" textAnchor="middle" fontSize="28" fontWeight="700" fill="#ffffff">
-        {label}
-      </text>
-      {/* 结扣 + 飘带尾线 */}
-      <path d="M144 146 l6 9 l6 -9 z" fill="#2c5f80" />
-      <path d="M150 155 q-14 14 0 27 q14 13 0 14" stroke="#7fb3d0" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-    </svg>
+    <img
+      src={`assets/days/${png.file}`}
+      alt={png.name}
+      draggable={false}
+      className="block w-full h-full object-cover"
+    />
   )
 }
 
-/* ---------- 卡片图区统一渲染：按新图样索引分流 PNG / SVG ---------- */
-// 新索引空间：0..PNG_COUNT-1 = PNG 插画，用 <img> 相对路径 assets/days/xxx.png
-//   （Electron 从 dist 加载时相对路径才正确；object-cover 满铺图区，与 SVG 的 slice 行为一致）；
-// 索引 ≥ PNG_COUNT = 原自绘 SVG：减去 PNG_COUNT 还原 SVG 序号，渲染方式完全不变（旧观感兼容）。
-function DayArtAny({
-  type,
-  variant,
-  month,
-  day,
-}: {
-  type: ImportantDay['type']
-  variant: number
-  month: number
-  day: number
-}) {
-  if (variant < PNG_COUNT) {
-    const png = PNG_VARIANTS[type][variant]
-    return (
-      <img
-        src={`assets/days/${png.file}`}
-        alt={png.name}
-        draggable={false}
-        className="block w-full h-full object-cover"
-      />
-    )
-  }
-  return <DayArt type={type} variant={variant - PNG_COUNT} month={month} day={day} />
-}
-
-// 图样选择器：当前类型可选变体的缩略图（表单共用；PNG 选项用 img 小缩略图，SVG 维持整幅缩略）
+// 图样选择器：当前类型的 3 张 PNG 缩略图（表单共用）
 function VariantPicker({
   type,
   value,
   onChange,
-  sample,
 }: {
   type: ImportantDay['type']
   value: number
   onChange: (v: number) => void
-  sample: [number, number] // 缩略图里演示用的 [月, 日]
 }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <span className="text-xs text-neutral-500 select-none">图样</span>
-      {Array.from({ length: VARIANT_COUNT[type] }, (_, i) => (
+      {PNG_VARIANTS[type].map((p, i) => (
         <button
-          key={i}
+          key={p.file}
           type="button"
           onClick={() => onChange(i)}
-          title={VARIANT_NAMES[type][i]}
+          title={p.name}
           className={`w-16 h-11 rounded-md overflow-hidden border transition-all flex items-center justify-center
             ${
               value === i
@@ -437,17 +144,7 @@ function VariantPicker({
                 : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-400'
             }`}
         >
-          {/* PNG 变体（索引 < PNG_COUNT）：img 小缩略图；SVG 变体：维持原整幅缩略（索引减回 SVG 序号） */}
-          {i < PNG_COUNT ? (
-            <img
-              src={`assets/days/${PNG_VARIANTS[type][i].file}`}
-              alt={PNG_VARIANTS[type][i].name}
-              draggable={false}
-              className="w-12 h-8 object-cover rounded"
-            />
-          ) : (
-            <DayArt type={type} variant={i - PNG_COUNT} month={sample[0]} day={sample[1]} />
-          )}
+          <img src={`assets/days/${p.file}`} alt={p.name} draggable={false} className="w-12 h-8 object-cover rounded" />
         </button>
       ))}
     </div>
@@ -472,9 +169,21 @@ function nextOccur(day: ImportantDay, todayStart: Date): Date {
     : thisYear
 }
 
+// 重要日 → 农历显示文案：每年重复只存 MM-DD，先用「下一次发生」的年份补全再转农历
+function lunarDayText(d: ImportantDay, todayStart: Date): string {
+  return lunarText(d.repeatYearly ? fmtDate(nextOccur(d, todayStart)) : d.date)
+}
+
 // 右键菜单状态（屏幕坐标，fixed 定位浮层）
 interface MenuState {
   id: string
+  x: number
+  y: number
+}
+
+// 二级子菜单状态（repeat=重复频率 / date=历法；屏幕坐标 fixed 定位，DOM 挂在父菜单内以便统一判定「点击外部」）
+interface SubMenuState {
+  kind: 'repeat' | 'date'
   x: number
   y: number
 }
@@ -499,19 +208,38 @@ interface EditDraft {
   note: string
 }
 
-// 右键菜单里的单个选项按钮
-function ContextButton({ children, onClick, danger }: { children: ReactNode; onClick: () => void; danger?: boolean }) {
+// 右键菜单里的单个选项按钮（可带：hover 回调 / 右侧 › 箭头（有子菜单）/ 选中态 ✓）
+function MenuRow({
+  children,
+  onClick,
+  onHover,
+  danger,
+  arrow,
+  active,
+}: {
+  children: ReactNode
+  onClick?: () => void
+  onHover?: (e: ReactMouseEvent<HTMLButtonElement>) => void
+  danger?: boolean
+  arrow?: boolean
+  active?: boolean
+}) {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-1.5 text-xs transition-colors
+      onMouseEnter={onHover}
+      className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs transition-colors
         ${
           danger
             ? 'text-red-500 hover:bg-red-500/10'
-            : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/10'
+            : active
+              ? 'text-haruto-sea font-medium hover:bg-black/5 dark:hover:bg-white/10'
+              : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/10'
         }`}
     >
-      {children}
+      <span>{children}</span>
+      {arrow && <span className="text-[10px] text-neutral-400 select-none">›</span>}
+      {active && <span className="text-[10px] select-none">✓</span>}
     </button>
   )
 }
@@ -540,44 +268,60 @@ export default function ImportantDays({
   const [remindDays, setRemindDays] = useState(7) // 提前提醒天数，默认 7
   const [newStyle, setNewStyle] = useState(0) // 新建时选的图样索引，默认 0
 
-  /* ---------- 左栏：右键菜单 / 行内编辑 / 归档折叠 ---------- */
+  /* ---------- 左栏：右键菜单（含二级子菜单）/ 行内编辑 / 归档折叠 ---------- */
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const [sub, setSub] = useState<SubMenuState | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<EditDraft | null>(null)
   const [editStyle, setEditStyle] = useState(0) // 编辑表单里的图样索引（localStorage）
   const [archivedOpen, setArchivedOpen] = useState(false)
 
-  /* ---------- 图样索引（localStorage 持久化，不污染 note 数据） ---------- */
+  /* ---------- 图样 / 重复 / 历法 / 置顶标记（localStorage 持久化，不污染 note 数据） ---------- */
   const [styleMap, setStyleMap] = useState<Record<string, number>>({})
-  // 挂载时读回全部图样索引（先做一次旧数据迁移）
+  const [repeatMap, setRepeatMap] = useState<Record<string, string>>({}) // monthly / weekly / daily
+  const [lunarMap, setLunarMap] = useState<Record<string, boolean>>({}) // true = 农历
+  const [pinnedMap, setPinnedMap] = useState<Record<string, boolean>>({}) // true = 置顶
+  // 挂载时读回全部标记（图样索引同时做「mod 3 归入 PNG」的一次性归一化）
   useEffect(() => {
     try {
-      // —— 旧索引一次性迁移 ——
-      // 兼容策略（二选一，此处采用「旧索引 + PNG数量 = 新索引」）：
-      //   旧版索引空间直接指向 SVG 变体（0 起）；新版 PNG 排前占掉 0..PNG_COUNT-1，
-      //   把旧值整体 +PNG_COUNT 后仍指向原来那幅 SVG，含义不变、旧记录不坏。
-      //   迁移完写入标记 key，之后保存的都是新空间索引，不再重复偏移
-      //   （循环内只覆写已存在的 DS_PREFIX 键、不新增键，故遍历索引不受影响）。
-      if (localStorage.getItem(DS_MIG_FLAG) !== '1') {
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i)
-          if (!k || !k.startsWith(DS_PREFIX)) continue
-          const n = Number(localStorage.getItem(k))
-          if (n > 0) localStorage.setItem(k, String(n + PNG_COUNT)) // 0 = 默认不存 key，无需处理
-        }
-        localStorage.setItem(DS_MIG_FLAG, '1')
-      }
-      const out: Record<string, number> = {}
+      // 先收集所有相关 key 再处理（避免边遍历边删改导致索引位移）
+      const styleKeys: string[] = []
+      const repeats: Record<string, string> = {}
+      const lunars: Record<string, boolean> = {}
+      const pins: Record<string, boolean> = {}
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i)
-        if (!k || !k.startsWith(DS_PREFIX)) continue
+        if (!k) continue
+        if (k.startsWith(DS_PREFIX)) styleKeys.push(k)
+        else if (k.startsWith(RP_PREFIX)) {
+          const v = localStorage.getItem(k)
+          if (v === 'monthly' || v === 'weekly' || v === 'daily') repeats[k.slice(RP_PREFIX.length)] = v
+        } else if (k.startsWith(LN_PREFIX) && localStorage.getItem(k) === '1') {
+          lunars[k.slice(LN_PREFIX.length)] = true
+        } else if (k.startsWith(PIN_PREFIX) && localStorage.getItem(k) === '1') {
+          pins[k.slice(PIN_PREFIX.length)] = true
+        }
+      }
+      // —— 图样索引迁移：只保留 3 张 PNG，任何旧索引（旧 SVG 序号或 PNG+SVG 混排下标）mod 3 归入对应 PNG ——
+      // 回写归一化值（幂等，重复执行结果不变）；0 = 默认图样，清掉 key 保持整洁
+      const out: Record<string, number> = {}
+      for (const k of styleKeys) {
         const n = Number(localStorage.getItem(k))
-        if (n >= 0) out[k.slice(DS_PREFIX.length)] = n
+        const norm = Number.isFinite(n) && n > 0 ? n % 3 : 0
+        if (norm > 0) {
+          localStorage.setItem(k, String(norm))
+          out[k.slice(DS_PREFIX.length)] = norm
+        } else {
+          localStorage.removeItem(k)
+        }
       }
       setStyleMap(out)
+      setRepeatMap(repeats)
+      setLunarMap(lunars)
+      setPinnedMap(pins)
     } catch {
-      /* localStorage 不可用时静默降级为默认图样 */
+      /* localStorage 不可用时静默降级为默认 */
     }
   }, [])
   // 写入 / 删除某个重要日的图样索引
@@ -591,6 +335,51 @@ export default function ImportantDays({
     setStyleMap((p) => {
       const next = { ...p }
       if (v > 0) next[id] = v
+      else delete next[id]
+      return next
+    })
+  }
+  // 写入 / 清除重复扩展标记（每月/每周/每天，本轮仅 UI）
+  const setRepeatMode = (id: string, mode: string | null) => {
+    try {
+      if (mode) localStorage.setItem(RP_PREFIX + id, mode)
+      else localStorage.removeItem(RP_PREFIX + id)
+    } catch {
+      /* 忽略写入失败 */
+    }
+    setRepeatMap((p) => {
+      const next = { ...p }
+      if (mode) next[id] = mode
+      else delete next[id]
+      return next
+    })
+  }
+  // 写入 / 清除历法标记（true = 农历；仅影响显示，不改存储的公历日期）
+  const setLunarFlag = (id: string, v: boolean) => {
+    try {
+      if (v) localStorage.setItem(LN_PREFIX + id, '1')
+      else localStorage.removeItem(LN_PREFIX + id)
+    } catch {
+      /* 忽略写入失败 */
+    }
+    setLunarMap((p) => {
+      const next = { ...p }
+      if (v) next[id] = true
+      else delete next[id]
+      return next
+    })
+  }
+  // 写入 / 清除置顶标记（true = 置顶：列表最前 + 卡片小标记）
+  const setPinnedFlag = (id: string, v: boolean) => {
+    try {
+      if (v) localStorage.setItem(PIN_PREFIX + id, '1')
+      else localStorage.removeItem(PIN_PREFIX + id)
+    } catch {
+      /* 忽略写入失败 */
+    }
+    setPinnedMap((p) => {
+      const next = { ...p }
+      if (v) next[id] = true
       else delete next[id]
       return next
     })
@@ -623,20 +412,15 @@ export default function ImportantDays({
   const todayStr = fmtDate(now)
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-  /* ---------- 左栏：列表（已归档不进主列表；按下一次发生日期临近排序） ---------- */
+  /* ---------- 左栏：列表（已归档不进主列表；置顶最前，其余按下次发生临近排序） ---------- */
   const activeDays = importantDays.filter((d) => !d.archived)
   const archivedDays = importantDays.filter((d) => d.archived)
-  const sortedDays = [...activeDays].sort(
-    (a, b) => nextOccur(a, todayStart).getTime() - nextOccur(b, todayStart).getTime()
-  )
-
-  // 从表单日期字符串取缩略图演示用的 [月, 日]（非法则回退到今天）
-  const formMD = (s: string): [number, number] => {
-    const md = s.length === 5 ? s : s.slice(5)
-    const [m, d] = md.split('-').map(Number)
-    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return [m, d]
-    return [now.getMonth() + 1, now.getDate()]
-  }
+  const sortedDays = [...activeDays].sort((a, b) => {
+    const pa = pinnedMap[a.id] ? 0 : 1
+    const pb = pinnedMap[b.id] ? 0 : 1
+    if (pa !== pb) return pa - pb // 置顶排最前
+    return nextOccur(a, todayStart).getTime() - nextOccur(b, todayStart).getTime()
+  })
 
   const canSave = title.trim() !== '' && date !== ''
   const handleSave = () => {
@@ -665,10 +449,11 @@ export default function ImportantDays({
     e.preventDefault()
     e.stopPropagation()
     setPop(null) // 菜单与气泡互斥
+    setSub(null) // 打开新菜单时收起旧子菜单
     setMenu({
       id,
       x: Math.max(8, Math.min(e.clientX, window.innerWidth - 170)), // 防溢出屏幕
-      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 180)),
+      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 200)),
     })
   }
 
@@ -688,6 +473,49 @@ export default function ImportantDays({
       window.removeEventListener('keydown', onKey)
     }
   }, [menu])
+
+  // 二级子菜单：hover 父项时锚定其右侧展开同样式浮层（右侧放不下翻左侧；上下防溢出）
+  const openSubMenu = (e: ReactMouseEvent<HTMLButtonElement>, kind: 'repeat' | 'date') => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const W = 96 // 子菜单宽（w-24）
+    const H = kind === 'repeat' ? 170 : 84 // 预估高度（5 项 / 2 项）
+    let x = r.right + 6
+    if (x + W > window.innerWidth - 8) x = Math.max(8, r.left - W - 6) // 右侧放不下 → 翻到左侧
+    const y = Math.max(8, Math.min(r.top - 6, window.innerHeight - H - 8))
+    setSub({ kind, x, y })
+  }
+
+  // 当前重复模式：「每年」看 repeatYearly，其余读扩展标记
+  const repeatModeOf = (d: ImportantDay): RepeatMode =>
+    d.repeatYearly ? 'yearly' : ((repeatMap[d.id] as RepeatMode) || 'none')
+
+  // 应用重复模式：「每年」= types.ts 的 repeatYearly（true 存 MM-DD / false 补全为完整日期）；
+  // 每月/每周/每天本轮仅 UI 标记（localStorage），待 types.ts 扩展字段后再接入计算
+  const applyRepeat = (d: ImportantDay, mode: RepeatMode) => {
+    const wantYearly = mode === 'yearly'
+    if (wantYearly !== d.repeatYearly) {
+      onUpdateDay(
+        d.id,
+        wantYearly
+          ? { repeatYearly: true, date: d.date.slice(5) } // 每年重复按约定只存 MM-DD
+          : { repeatYearly: false, date: fmtDate(nextOccur(d, todayStart)) } // 关闭时用「下一次发生」补全年份，避免只剩 MM-DD 无法解析
+      )
+    }
+    setRepeatMode(d.id, mode === 'monthly' || mode === 'weekly' || mode === 'daily' ? mode : null)
+    setMenu(null)
+  }
+
+  // 历法切换：只改显示标记，存储与倒计时仍按公历原值
+  const applyCalendar = (d: ImportantDay, lunar: boolean) => {
+    setLunarFlag(d.id, lunar)
+    setMenu(null)
+  }
+
+  // 置顶开关：置顶卡片排最前 + 📌 小标记
+  const togglePinned = (d: ImportantDay) => {
+    setPinnedFlag(d.id, !pinnedMap[d.id])
+    setMenu(null)
+  }
 
   // 点击气泡外 / Esc 关闭
   useEffect(() => {
@@ -718,7 +546,7 @@ export default function ImportantDays({
       remindDaysBefore: d.remindDaysBefore,
       note: d.note,
     })
-    setEditStyle(Math.min(styleMap[d.id] ?? 0, VARIANT_COUNT[d.type] - 1)) // 图样索引一并回填
+    setEditStyle(styleMap[d.id] ?? 0) // 图样索引一并回填（0..2）
   }
   const cancelEdit = () => {
     setEditingId(null)
@@ -852,7 +680,7 @@ export default function ImportantDays({
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-bold">重要日</h1>
-          <span className="text-[10px] text-neutral-400">右键卡片可编辑 / 归档 / 删除</span>
+          <span className="text-[10px] text-neutral-400">右键卡片：编辑 / 重复 / 日期 / 置顶 / 删除</span>
         </div>
 
         {/* 添加按钮 → 内联表单（标题 + 类型 + 日期 + 图样 + 每年重复 + 提前提醒天数） */}
@@ -883,14 +711,11 @@ export default function ImportantDays({
               />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {/* 类型选择（切换类型时图样越界则归零） */}
+              {/* 类型选择 */}
               {TYPE_OPTIONS.map((t) => (
                 <button
                   key={t.value}
-                  onClick={() => {
-                    setType(t.value)
-                    if (newStyle >= VARIANT_COUNT[t.value]) setNewStyle(0)
-                  }}
+                  onClick={() => setType(t.value)}
                   className={`text-xs px-3 py-1.5 rounded-full border transition-colors
                     ${
                       type === t.value
@@ -926,9 +751,9 @@ export default function ImportantDays({
                 天提醒
               </label>
             </div>
-            {/* 图样选择（随所选日期实时预览日期大字） */}
+            {/* 图样选择（3 张 PNG） */}
             <div className="mt-2.5">
-              <VariantPicker type={type} value={newStyle} onChange={setNewStyle} sample={formMD(date)} />
+              <VariantPicker type={type} value={newStyle} onChange={setNewStyle} />
             </div>
             <div className="mt-3 flex justify-end gap-2">
               <button
@@ -962,7 +787,7 @@ export default function ImportantDays({
           </button>
         )}
 
-        {/* 原地编辑表单（回填现有值 + 图样选择；保存在 onUpdateDay，图样入 localStorage） */}
+        {/* 原地编辑表单（回填现有值 + 图样选择 + 历法切换；保存在 onUpdateDay，图样/历法入 localStorage） */}
         {editingId && draft && (
           <div className="task-item mt-4 rounded-xl border border-haruto-sea/40 bg-white dark:bg-neutral-900 p-4">
             <div className="flex gap-2">
@@ -986,14 +811,17 @@ export default function ImportantDays({
                   bg-transparent px-3 py-2 text-sm outline-none focus:border-haruto-sea"
               />
             </div>
+            {/* 历法为农历：日期选择后实时预览对应农历文字（存储与倒计时仍按公历原值） */}
+            {lunarMap[editingId] && lunarText(draft.date) && (
+              <div className="mt-1 text-[10px] text-neutral-400 select-none">
+                对应：{lunarText(draft.date)} · 按公历日期提醒
+              </div>
+            )}
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               {TYPE_OPTIONS.map((t) => (
                 <button
                   key={t.value}
-                  onClick={() => {
-                    setDraft({ ...draft, type: t.value })
-                    if (editStyle >= VARIANT_COUNT[t.value]) setEditStyle(0) // 类型切换后图样越界归零
-                  }}
+                  onClick={() => setDraft({ ...draft, type: t.value })}
                   className={`text-xs px-3 py-1.5 rounded-full border transition-colors
                     ${
                       draft.type === t.value
@@ -1002,6 +830,27 @@ export default function ImportantDays({
                     }`}
                 >
                   {t.label}
+                </button>
+              ))}
+              {/* 历法切换：公历 / 农历（与右键菜单「日期▸」共用同一存储，仅影响显示） */}
+              <span className="text-xs text-neutral-500 select-none">历法</span>
+              {(
+                [
+                  ['solar', '公历'],
+                  ['lunar', '农历'],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  onClick={() => setLunarFlag(editingId, v === 'lunar')}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors
+                    ${
+                      !!lunarMap[editingId] === (v === 'lunar')
+                        ? 'border-haruto-sea bg-haruto-sea/10 text-haruto-sea font-medium'
+                        : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:border-neutral-400'
+                    }`}
+                >
+                  {label}
                 </button>
               ))}
               <label className="flex items-center gap-1.5 text-xs text-neutral-500 cursor-pointer select-none">
@@ -1033,7 +882,7 @@ export default function ImportantDays({
               </label>
             </div>
             <div className="mt-2.5">
-              <VariantPicker type={draft.type} value={editStyle} onChange={setEditStyle} sample={formMD(draft.date)} />
+              <VariantPicker type={draft.type} value={editStyle} onChange={setEditStyle} />
             </div>
             <input
               value={draft.note}
@@ -1073,33 +922,55 @@ export default function ImportantDays({
             .map((d) => {
               const [mo, dy] = monthDayOf(d.date)
               const daysLeft = diffDays(nextOccur(d, todayStart), todayStart)
-              const styleIdx = Math.min(styleMap[d.id] ?? 0, VARIANT_COUNT[d.type] - 1) // 图样索引（默认 0）
+              const styleIdx = styleMap[d.id] ?? 0 // 图样索引（0..2，加载时已归一化）
+              const repExtra = repeatMap[d.id] // monthly / weekly / daily（仅 UI 标记）
+              // 农历标记：日期行显示「农历X月X日」（转换失败回退公历显示）
+              const lunarStr = lunarMap[d.id] ? lunarDayText(d, todayStart) : ''
               return (
                 <div
                   key={d.id}
                   onContextMenu={(e) => openMenu(e, d.id)}
-                  title="右键：编辑 / 归档 / 删除"
+                  title="右键：编辑 / 重复 / 日期 / 置顶 / 删除"
                   className="task-item group relative h-[225px] rounded-xl overflow-hidden cursor-default
                     border border-neutral-200/70 dark:border-neutral-700/60 bg-white dark:bg-neutral-900
                     shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
                 >
-                  {/* 图区（上 60%）：PNG 变体 <img> 满铺 / SVG 变体维持原内联插画（嵌入日期大字） */}
+                  {/* 图区（上 60%）：PNG 插画 <img> 满铺 */}
                   <div className="h-[60%] overflow-hidden">
-                    <DayArtAny type={d.type} variant={styleIdx} month={mo} day={dy} />
+                    <DayArtPng type={d.type} variant={styleIdx} />
                   </div>
                   {/* 文区（下 40%）：标题（14px 粗体）→ 日期（12px 灰）→ 倒计时胶囊 */}
                   <div className="h-[40%] px-3 pt-2 pb-2.5 flex flex-col min-w-0">
                     <div className="flex items-center gap-1 min-w-0">
+                      {/* 置顶小标记 */}
+                      {pinnedMap[d.id] && (
+                        <span className="shrink-0 text-[10px]" title="已置顶">
+                          📌
+                        </span>
+                      )}
                       <span className="text-sm font-bold truncate">{d.title}</span>
                       {d.repeatYearly && (
                         <span className="shrink-0 text-[10px]" title="每年重复">
                           🔁
                         </span>
                       )}
+                      {/* 每月/每周/每天（本轮仅 UI）：文字小标签 */}
+                      {repExtra && (
+                        <span
+                          className="shrink-0 text-[10px] text-neutral-400 select-none"
+                          title={`重复：${REPEAT_LABELS[repExtra]}`}
+                        >
+                          {REPEAT_LABELS[repExtra]}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 text-xs text-neutral-400 tabular-nums select-none">
-                      {d.repeatYearly ? `每年 ${mo}月${dy}日` : d.date}
+                      {lunarStr || (d.repeatYearly ? `每年 ${mo}月${dy}日` : d.date)}
                     </div>
+                    {/* 农历标记的提示小字：倒计时按公历原值计算 */}
+                    {lunarStr && (
+                      <div className="text-[10px] text-neutral-400/80 select-none">按公历日期提醒</div>
+                    )}
                     {/* 底部徽章：主题色底白字圆角胶囊（今天 = 玫红以示庆祝，已过 = 中性灰） */}
                     <div className="mt-auto">
                       <span
@@ -1143,16 +1014,16 @@ export default function ImportantDays({
               <div className="task-item mt-2 flex flex-col gap-1.5">
                 {archivedDays.map((d) => {
                   const [mo, dy] = monthDayOf(d.date)
-                  const styleIdx = Math.min(styleMap[d.id] ?? 0, VARIANT_COUNT[d.type] - 1)
+                  const styleIdx = styleMap[d.id] ?? 0 // 图样索引（0..2，加载时已归一化）
                   return (
                     <div
                       key={d.id}
                       className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-dashed
                         border-neutral-200 dark:border-neutral-700 bg-black/[0.02] dark:bg-white/[0.02]"
                     >
-                      {/* 小图样缩略图（替代原 emoji 方块；PNG/SVG 按图样索引分流） */}
+                      {/* 小图样缩略图（PNG 插画） */}
                       <span className="w-12 h-9 shrink-0 rounded-md overflow-hidden border border-neutral-200 dark:border-neutral-700">
-                        <DayArtAny type={d.type} variant={styleIdx} month={mo} day={dy} />
+                        <DayArtPng type={d.type} variant={styleIdx} />
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{d.title}</div>
@@ -1294,59 +1165,54 @@ export default function ImportantDays({
         <div className="mt-1.5 text-[10px] text-neutral-400">预测为日历推算，非医疗建议</div>
       </aside>
 
-      {/* ===== 生理期小气泡弹窗（锚定日期格旁，点击别处 / Esc 关闭） ===== */}
+      {/* ===== 生理期确认弹窗（居中模态：点日期 → 月经开始了吗？/已有开始 → 月经结束了吗？） ===== */}
       {pop && (
         <div
-          ref={popRef}
-          className="task-item fixed z-50 w-48 rounded-xl border border-neutral-200 dark:border-neutral-700
-            bg-white dark:bg-neutral-800 shadow-xl p-3"
-          style={{ left: pop.x, top: pop.y }}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 animate-[fadeSlideIn_.15s_ease]"
+          onClick={() => setPop(null)}
         >
-          {/* 气泡小箭头（指向日期格一侧） */}
-          <span
-            className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 bg-white dark:bg-neutral-800
-              ${
-                pop.side === 'right'
-                  ? '-left-[5px] border-l border-t border-neutral-200 dark:border-neutral-700'
-                  : '-right-[5px] border-r border-b border-neutral-200 dark:border-neutral-700'
-              }`}
-          />
-          {/* 问题 / 提示标题 */}
-          <div className="text-xs font-medium select-none">
-            {pop.kind === 'start' ? '月经开始了吗？' : pop.kind === 'end' ? '月经结束了吗？' : '提示'}
-          </div>
-          {/* 日期 / 提示正文 */}
-          <div className="mt-0.5 text-[10px] text-neutral-400 tabular-nums select-none">
-            {pop.kind === 'info' ? pop.info : pop.date}
-          </div>
-          {/* 两个开关按钮：开始|取消 / 结束|取消 / 知道啦 */}
-          <div className="mt-2.5 flex gap-2">
-            {pop.kind !== 'info' && (
+          <div
+            ref={popRef}
+            onClick={(e) => e.stopPropagation()}
+            className="w-72 rounded-2xl border border-neutral-200 dark:border-neutral-700
+              bg-white dark:bg-neutral-800 shadow-2xl p-5"
+          >
+            {/* 问题 / 提示标题 */}
+            <div className="text-sm font-semibold select-none">
+              {pop.kind === 'start' ? '月经开始了吗？' : pop.kind === 'end' ? '月经结束了吗？' : '提示'}
+            </div>
+            {/* 日期 / 提示正文 */}
+            <div className="mt-1 text-xs text-neutral-400 tabular-nums select-none">
+              {pop.kind === 'info' ? pop.info : pop.date}
+            </div>
+            {/* 开关按钮：开始|取消 / 结束|取消 / 知道啦 */}
+            <div className="mt-4 flex gap-2">
+              {pop.kind !== 'info' && (
+                <button
+                  onClick={() => {
+                    onPeriodMark(pop.date, pop.kind === 'end' ? 'end' : 'start')
+                    setPop(null)
+                  }}
+                  className="flex-1 text-xs py-2 rounded-lg bg-[#d94f6e] text-white font-medium
+                    hover:opacity-90 transition-opacity select-none"
+                >
+                  {pop.kind === 'start' ? '开始' : '结束'}
+                </button>
+              )}
               <button
-                onClick={() => {
-                  // start = 记录该日为 startDate；end = 记 endDate（info 分支不会渲染本按钮）
-                  onPeriodMark(pop.date, pop.kind === 'end' ? 'end' : 'start')
-                  setPop(null)
-                }}
-                className="flex-1 text-xs py-1.5 rounded-lg bg-[#d94f6e] text-white font-medium
-                  hover:opacity-90 transition-opacity select-none"
+                onClick={() => setPop(null)}
+                className={`text-xs py-2 rounded-lg border border-neutral-200 dark:border-neutral-600
+                  text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors select-none
+                  ${pop.kind !== 'info' ? 'flex-1' : 'w-full'}`}
               >
-                {pop.kind === 'start' ? '开始' : '结束'}
+                {pop.kind === 'info' ? '知道啦' : '取消'}
               </button>
-            )}
-            <button
-              onClick={() => setPop(null)}
-              className={`text-xs py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-600
-                text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors select-none
-                ${pop.kind !== 'info' ? 'flex-1' : 'w-full'}`}
-            >
-              {pop.kind === 'info' ? '知道啦' : '取消'}
-            </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ===== 右键菜单浮层：编辑 / 归档 / 删除（点击别处 / Esc 关闭） ===== */}
+      {/* ===== 右键菜单浮层：编辑 / 重复▸ / 日期▸ / 置顶 / 删除（点击别处 / Esc 关闭） ===== */}
       {menu && menuDay && (
         <div
           ref={menuRef}
@@ -1354,25 +1220,66 @@ export default function ImportantDays({
             bg-white dark:bg-neutral-800 shadow-xl py-1.5"
           style={{ left: menu.x, top: menu.y }}
         >
-          <ContextButton onClick={() => startEdit(menuDay)}>✏️ 编辑</ContextButton>
-          <ContextButton
-            onClick={() => {
-              onUpdateDay(menuDay.id, { archived: true })
-              setMenu(null)
-            }}
-          >
-            📦 归档
-          </ContextButton>
+          <MenuRow onClick={() => startEdit(menuDay)} onHover={() => setSub(null)}>
+            ✏️ 编辑
+          </MenuRow>
+          {/* 重复▸：hover 右侧展开子菜单（不重复/每年/每月/每周/每天） */}
+          <MenuRow arrow onHover={(e) => openSubMenu(e, 'repeat')}>
+            🔁 重复
+          </MenuRow>
+          {/* 日期▸：hover 右侧展开子菜单（公历/农历，仅影响显示） */}
+          <MenuRow arrow onHover={(e) => openSubMenu(e, 'date')}>
+            📅 日期
+          </MenuRow>
+          <MenuRow onClick={() => togglePinned(menuDay)} onHover={() => setSub(null)}>
+            📌 {pinnedMap[menuDay.id] ? '取消置顶' : '置顶'}
+          </MenuRow>
           <div className="my-1 h-px bg-neutral-100 dark:bg-neutral-700/60" />
-          <ContextButton
+          <MenuRow
             danger
             onClick={() => {
               onDeleteDay(menuDay.id)
               setMenu(null)
             }}
+            onHover={() => setSub(null)}
           >
             🗑 删除
-          </ContextButton>
+          </MenuRow>
+
+          {/* 二级子菜单：同样式浮层，锚定父项右侧展开（fixed 定位但 DOM 挂在父菜单内，统一判定「点击外部」） */}
+          {sub && (
+            <div
+              className="task-item fixed z-50 w-24 rounded-xl border border-neutral-200 dark:border-neutral-700
+                bg-white dark:bg-neutral-800 shadow-xl py-1.5"
+              style={{ left: sub.x, top: sub.y }}
+              onMouseLeave={() => setSub(null)}
+            >
+              {sub.kind === 'repeat'
+                ? REPEAT_MODES.map((m) => (
+                    <MenuRow
+                      key={m.value}
+                      active={repeatModeOf(menuDay) === m.value}
+                      onClick={() => applyRepeat(menuDay, m.value)}
+                    >
+                      {m.label}
+                    </MenuRow>
+                  ))
+                : (
+                    [
+                      ['solar', '公历'],
+                      ['lunar', '农历'],
+                    ] as const
+                  ).map(([v, label]) => (
+                    <MenuRow
+                      key={v}
+                      active={!!lunarMap[menuDay.id] === (v === 'lunar')}
+                      onClick={() => applyCalendar(menuDay, v === 'lunar')}
+                    >
+                      {label}
+                    </MenuRow>
+                  ))}
+            </div>
+          )}
         </div>
       )}
     </div>
