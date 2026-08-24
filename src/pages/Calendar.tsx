@@ -34,6 +34,18 @@ export default function Calendar({
   const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() }) // m: 0-11
   const [selected, setSelected] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('') // 速览区"添加当天任务"输入框内容
+  const [mode, setMode] = useState<'month' | 'week'>('month') // 周/月视图切换
+  const [weekOffset, setWeekOffset] = useState(0) // 周视图：相对本周的偏移
+
+  // 周视图的 7 天（从本周/偏移周的周一开始）
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7)
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    return d
+  })
+  const WEEK_MON = ['一', '二', '三', '四', '五', '六', '日']
 
   const tagMap = new Map(tags.map((t) => [t.id, t]))
 
@@ -62,18 +74,46 @@ export default function Calendar({
 
   return (
     <div className="p-6">
-      {/* 工具栏：切月 + 今天 + 无日期任务计数提示 */}
+      {/* 工具栏：标题 + 切换 + 今天 + 周/月视图切换 + 无日期任务计数提示 */}
       <div className="flex items-center gap-3">
-        <h1 className="text-xl font-bold">{view.y}年{view.m + 1}月</h1>
-        <button onClick={() => shiftMonth(-1)} className="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm hover:border-haruto-sea">«</button>
-        <button onClick={() => shiftMonth(1)} className="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm hover:border-haruto-sea">»</button>
+        {mode === 'month' ? (
+          <>
+            <h1 className="text-xl font-bold">{view.y}年{view.m + 1}月</h1>
+            <button onClick={() => shiftMonth(-1)} className="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm hover:border-haruto-sea">«</button>
+            <button onClick={() => shiftMonth(1)} className="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm hover:border-haruto-sea">»</button>
+          </>
+        ) : (
+          <>
+            <h1 className="text-xl font-bold">
+              {weekDays[0].getMonth() + 1}月{weekDays[0].getDate()}日 ~ {weekDays[6].getMonth() + 1}月{weekDays[6].getDate()}日
+            </h1>
+            <button onClick={() => setWeekOffset((w) => w - 1)} className="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm hover:border-haruto-sea">«</button>
+            <button onClick={() => setWeekOffset((w) => w + 1)} className="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm hover:border-haruto-sea">»</button>
+          </>
+        )}
         <button
-          onClick={() => { setView({ y: now.getFullYear(), m: now.getMonth() }); setSelected(null) }}
+          onClick={() => {
+            setView({ y: now.getFullYear(), m: now.getMonth() })
+            setWeekOffset(0)
+            setSelected(null)
+          }}
           className="px-3 py-1 rounded-lg text-sm bg-haruto-sea/10 text-haruto-sea"
         >
           今天
         </button>
-        {/* 无日期任务计数：这些任务不会出现在月历上 */}
+        {/* 周/月视图切换 */}
+        <div className="flex rounded-lg bg-black/5 dark:bg-white/5 p-0.5 text-xs">
+          {(['week', 'month'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setMode(v)}
+              className={`px-3 py-1 rounded-md ${mode === v ? 'bg-haruto-sea text-white' : 'text-neutral-500'}`}
+            >
+              {v === 'week' ? '周' : '月'}
+            </button>
+          ))}
+        </div>
+        {/* 无日期任务计数：这些任务不会出现在月历 */}
         {noDateCount > 0 && (
           <span
             title="无日期的任务不会显示在月历，给任务设置日期即可"
@@ -84,6 +124,49 @@ export default function Calendar({
         )}
       </div>
 
+      {/* ===== 周视图：左侧时间刻度 + 7 列（周一~周日），总览用不可编辑 ===== */}
+      {mode === 'week' && (
+        <div className="mt-4 flex rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+          {/* 左侧时间刻度（纯视觉参考线，任务只有日期无时刻，条目置于列头下方） */}
+          <div className="w-12 shrink-0 border-r border-neutral-100 dark:border-neutral-800/60 bg-black/[0.02] dark:bg-white/[0.02]">
+            <div className="h-12 border-b border-neutral-100 dark:border-neutral-800/60" />
+            {Array.from({ length: 17 }, (_, i) => i + 7).map((h) => (
+              <div key={h} className="h-10 border-b border-dashed border-neutral-100 dark:border-neutral-800/40 text-[9px] text-neutral-400 pl-1.5 pt-0.5 tabular-nums">
+                {h}:00
+              </div>
+            ))}
+          </div>
+          <div className="flex-1 grid grid-cols-7">
+            {weekDays.map((d, i) => {
+              const ds = fmtDate(d)
+              const isToday = ds === today
+              return (
+                <div key={i} className={`border-r last:border-r-0 border-neutral-100 dark:border-neutral-800/60 min-h-[560px] ${isToday ? 'bg-haruto-sea/[0.04]' : ''}`}>
+                  <div className={`h-12 flex flex-col items-center justify-center border-b border-neutral-100 dark:border-neutral-800/60 ${isToday ? 'text-haruto-sea font-bold' : 'text-neutral-500'}`}>
+                    <span className="text-sm tabular-nums">{d.getDate()}</span>
+                    <span className="text-[10px]">周{WEEK_MON[i]}</span>
+                  </div>
+                  <div className="p-1 space-y-1">
+                    {tasksOn(ds).map((t) => (
+                      <div
+                        key={t.id}
+                        title={(t.parentTaskId ? '└ ' : '') + t.title}
+                        className={`text-[11px] px-1.5 py-1 rounded truncate text-white ${t.done ? 'line-through opacity-50' : ''}`}
+                        style={{ backgroundColor: t.tagId ? tagMap.get(t.tagId)?.color ?? '#6b7280' : '#6b7280' }}
+                      >
+                        {t.parentTaskId ? '└ ' : ''}{t.title}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ===== 月视图 ===== */}
+      {mode === 'month' && (<>
       {/* 星期表头 */}
       <div className="grid grid-cols-7 mt-4 text-center text-xs text-neutral-400">
         {WEEK.map((w) => <div key={w} className="py-1.5">{w}</div>)}
@@ -175,6 +258,7 @@ export default function Calendar({
           />
         </div>
       )}
+      </>)}
     </div>
   )
 }

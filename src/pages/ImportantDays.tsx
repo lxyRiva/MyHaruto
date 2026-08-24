@@ -1,7 +1,9 @@
 // 重要日页：左栏重要日（🎂生日/🎉节日/📌自定义）竖版图文卡管理，右栏生理期迷你月历（记录 + 预测）
-// 卡片：图上字下（图区 60% 内联 SVG 插画 / 文区 40% 标题+日期+倒计时胶囊），网格 2~3 列，
+// 卡片：图上字下（图区 60% 插画 / 文区 40% 标题+日期+倒计时胶囊），网格 2~3 列，
 //       白底圆角 xl 柔和阴影，hover 轻微上浮；右键菜单（编辑/归档/删除）、已归档折叠区保留。
-// 图样：每类型 2~3 个插画变体，选择索引存 localStorage（key=mh-day-style-{id}，不污染 note 数据）。
+// 图样：每类型 = 3 张 PNG 插画（assets/days/，排前）+ 原自绘 SVG 变体（在后），
+//       选择索引存 localStorage（key=mh-day-style-{id}，不污染 note 数据）；
+//       旧数据索引一次性 +PNG_COUNT 迁移（见挂载 effect，标记 key 防重复偏移）。
 // 生理期：点击日期弹出小气泡（开始/结束确认），绝不自动测算结束——无 endDate 只标记开始日，不蔓延；
 //        预测（浅红虚线）仅作显示建议。注意：经期预测只是日历推算，仅供参考，非医疗建议。
 // 所有编辑均为行内表单（Electron 下禁用 prompt/alert）。
@@ -43,16 +45,52 @@ const TYPE_OPTIONS: { value: ImportantDay['type']; label: string }[] = [
   { value: 'custom', label: '📌 自定义' },
 ]
 
-// 每类型可选的插画变体数与名称（图样索引存 localStorage，不动 note 数据）
-const VARIANT_COUNT: Record<ImportantDay['type'], number> = { birthday: 2, festival: 2, custom: 3 }
-const VARIANT_NAMES: Record<ImportantDay['type'], string[]> = {
+/* ---------- 图样变体表：PNG 插画（前）+ 自绘 SVG（后） ---------- */
+
+// 每类型 PNG 插画数量（public/assets/days/，构建后位于 assets/days/）：统一 3 张，排在 SVG 之前。
+// 该常量同时用于新旧索引换算（旧索引迁移、DayArt 分流），勿随意改动。
+const PNG_COUNT = 3
+const PNG_VARIANTS: Record<ImportantDay['type'], { file: string; name: string }[]> = {
+  birthday: [
+    { file: 'birthday-balloon.png', name: '热气球' },
+    { file: 'birthday-cake.png', name: '蛋糕' },
+    { file: 'birthday-cat.png', name: '猫咪' },
+  ],
+  festival: [
+    { file: 'festival-lantern.png', name: '灯笼' },
+    { file: 'festival-fireworks.png', name: '烟花' },
+    { file: 'festival-christmas.png', name: '圣诞' },
+  ],
+  custom: [
+    { file: 'custom-moon.png', name: '月亮' },
+    { file: 'custom-plane.png', name: '纸飞机' },
+    { file: 'custom-plant.png', name: '绿植' },
+  ],
+}
+
+// 原自绘 SVG 变体名称（数量需与 DayArt 内的实际分支一致，顺序即 SVG 序号）
+const SVG_NAMES: Record<ImportantDay['type'], string[]> = {
   birthday: ['蛋糕烛光', '纸杯蛋糕'],
   festival: ['绽放烟花', '彩带星徽'],
   custom: ['礼物盒', '星星月亮', '心愿气球'],
 }
 
+// 每类型备选总数与名称：PNG（占索引 0..PNG_COUNT-1）+ SVG（其后），图样索引即在此列表中的下标
+const VARIANT_COUNT: Record<ImportantDay['type'], number> = {
+  birthday: PNG_COUNT + SVG_NAMES.birthday.length,
+  festival: PNG_COUNT + SVG_NAMES.festival.length,
+  custom: PNG_COUNT + SVG_NAMES.custom.length,
+}
+const VARIANT_NAMES: Record<ImportantDay['type'], string[]> = {
+  birthday: [...PNG_VARIANTS.birthday.map((p) => p.name), ...SVG_NAMES.birthday],
+  festival: [...PNG_VARIANTS.festival.map((p) => p.name), ...SVG_NAMES.festival],
+  custom: [...PNG_VARIANTS.custom.map((p) => p.name), ...SVG_NAMES.custom],
+}
+
 // localStorage key 前缀：mh-day-style-{id} = 图样索引
 const DS_PREFIX = 'mh-day-style-'
+// 一次性迁移标记 key：旧索引 +PNG_COUNT 偏移只做一次（见挂载 effect），防止新保存的索引被二次偏移
+const DS_MIG_FLAG = 'mh-day-style-migrated-png'
 
 // 五角星 path（以原点为中心、外径 r 的正五角星）
 function starPath(r: number): string {
@@ -67,6 +105,7 @@ function starPath(r: number): string {
 
 /* ---------- 内联 SVG 插画：每类型多幅变体，嵌入该重要日的月-日大字 ---------- */
 // 统一 viewBox 300×200、preserveAspectRatio slice：图区满铺不留白
+// 注意：此处 variant 是 SVG 内部序号（0 起）；新图样索引需先减 PNG_COUNT 再传入（见 DayArtAny）
 function DayArt({
   type,
   variant,
@@ -341,7 +380,36 @@ function DayArt({
   )
 }
 
-// 图样选择器：当前类型可选变体的缩略图（表单共用）
+/* ---------- 卡片图区统一渲染：按新图样索引分流 PNG / SVG ---------- */
+// 新索引空间：0..PNG_COUNT-1 = PNG 插画，用 <img> 相对路径 assets/days/xxx.png
+//   （Electron 从 dist 加载时相对路径才正确；object-cover 满铺图区，与 SVG 的 slice 行为一致）；
+// 索引 ≥ PNG_COUNT = 原自绘 SVG：减去 PNG_COUNT 还原 SVG 序号，渲染方式完全不变（旧观感兼容）。
+function DayArtAny({
+  type,
+  variant,
+  month,
+  day,
+}: {
+  type: ImportantDay['type']
+  variant: number
+  month: number
+  day: number
+}) {
+  if (variant < PNG_COUNT) {
+    const png = PNG_VARIANTS[type][variant]
+    return (
+      <img
+        src={`assets/days/${png.file}`}
+        alt={png.name}
+        draggable={false}
+        className="block w-full h-full object-cover"
+      />
+    )
+  }
+  return <DayArt type={type} variant={variant - PNG_COUNT} month={month} day={day} />
+}
+
+// 图样选择器：当前类型可选变体的缩略图（表单共用；PNG 选项用 img 小缩略图，SVG 维持整幅缩略）
 function VariantPicker({
   type,
   value,
@@ -362,14 +430,24 @@ function VariantPicker({
           type="button"
           onClick={() => onChange(i)}
           title={VARIANT_NAMES[type][i]}
-          className={`w-16 h-11 rounded-md overflow-hidden border transition-all
+          className={`w-16 h-11 rounded-md overflow-hidden border transition-all flex items-center justify-center
             ${
               value === i
                 ? 'border-haruto-sea ring-1 ring-haruto-sea'
                 : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-400'
             }`}
         >
-          <DayArt type={type} variant={i} month={sample[0]} day={sample[1]} />
+          {/* PNG 变体（索引 < PNG_COUNT）：img 小缩略图；SVG 变体：维持原整幅缩略（索引减回 SVG 序号） */}
+          {i < PNG_COUNT ? (
+            <img
+              src={`assets/days/${PNG_VARIANTS[type][i].file}`}
+              alt={PNG_VARIANTS[type][i].name}
+              draggable={false}
+              className="w-12 h-8 object-cover rounded"
+            />
+          ) : (
+            <DayArt type={type} variant={i - PNG_COUNT} month={sample[0]} day={sample[1]} />
+          )}
         </button>
       ))}
     </div>
@@ -472,9 +550,24 @@ export default function ImportantDays({
 
   /* ---------- 图样索引（localStorage 持久化，不污染 note 数据） ---------- */
   const [styleMap, setStyleMap] = useState<Record<string, number>>({})
-  // 挂载时读回全部图样索引
+  // 挂载时读回全部图样索引（先做一次旧数据迁移）
   useEffect(() => {
     try {
+      // —— 旧索引一次性迁移 ——
+      // 兼容策略（二选一，此处采用「旧索引 + PNG数量 = 新索引」）：
+      //   旧版索引空间直接指向 SVG 变体（0 起）；新版 PNG 排前占掉 0..PNG_COUNT-1，
+      //   把旧值整体 +PNG_COUNT 后仍指向原来那幅 SVG，含义不变、旧记录不坏。
+      //   迁移完写入标记 key，之后保存的都是新空间索引，不再重复偏移
+      //   （循环内只覆写已存在的 DS_PREFIX 键、不新增键，故遍历索引不受影响）。
+      if (localStorage.getItem(DS_MIG_FLAG) !== '1') {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i)
+          if (!k || !k.startsWith(DS_PREFIX)) continue
+          const n = Number(localStorage.getItem(k))
+          if (n > 0) localStorage.setItem(k, String(n + PNG_COUNT)) // 0 = 默认不存 key，无需处理
+        }
+        localStorage.setItem(DS_MIG_FLAG, '1')
+      }
       const out: Record<string, number> = {}
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i)
@@ -990,9 +1083,9 @@ export default function ImportantDays({
                     border border-neutral-200/70 dark:border-neutral-700/60 bg-white dark:bg-neutral-900
                     shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
                 >
-                  {/* 图区（上 60%）：内联 SVG 插画，嵌入日期大字 */}
+                  {/* 图区（上 60%）：PNG 变体 <img> 满铺 / SVG 变体维持原内联插画（嵌入日期大字） */}
                   <div className="h-[60%] overflow-hidden">
-                    <DayArt type={d.type} variant={styleIdx} month={mo} day={dy} />
+                    <DayArtAny type={d.type} variant={styleIdx} month={mo} day={dy} />
                   </div>
                   {/* 文区（下 40%）：标题（14px 粗体）→ 日期（12px 灰）→ 倒计时胶囊 */}
                   <div className="h-[40%] px-3 pt-2 pb-2.5 flex flex-col min-w-0">
@@ -1057,9 +1150,9 @@ export default function ImportantDays({
                       className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-dashed
                         border-neutral-200 dark:border-neutral-700 bg-black/[0.02] dark:bg-white/[0.02]"
                     >
-                      {/* 小图样缩略图（替代原 emoji 方块） */}
+                      {/* 小图样缩略图（替代原 emoji 方块；PNG/SVG 按图样索引分流） */}
                       <span className="w-12 h-9 shrink-0 rounded-md overflow-hidden border border-neutral-200 dark:border-neutral-700">
-                        <DayArt type={d.type} variant={styleIdx} month={mo} day={dy} />
+                        <DayArtAny type={d.type} variant={styleIdx} month={mo} day={dy} />
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{d.title}</div>

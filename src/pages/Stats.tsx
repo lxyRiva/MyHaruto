@@ -5,7 +5,7 @@
  * 2. 番茄钟饼图：各任务专注时长占比（图例右侧，色块取固定「名家色板」按序循环分配）
  *    - 日视图：按具体任务（含子任务）统计
  *    - 月/年视图：仅按主任务统计，子任务时长沿 parentTaskId 链向上归并
- * 3. 年度专注热力图（GitHub 贡献图样式）：7 行（周一~周日）× 最多 53 列（周），
+ * 3. 年度专注热力图（竖排连续填充日历式）：每列 14 格从上到下连续排日期，横轴每 3 个月标记
  *    纯 div 网格渲染（相对 ECharts 可精确控制 w-3 h-3 / gap-[2px] 的格子尺寸与月份标签），
  *    悬停 tooltip 显示「日期 + 专注 N 分钟」，未来日期格子不渲染
  * 4. 入睡折线图（仅月视图）：y 轴 21:00 → 05:00 连续
@@ -40,8 +40,7 @@ const MASTER_PALETTE = [
 const TEXT_PRIMARY = '#666';
 /** 图表次级文字色（坐标轴等） */
 const TEXT_SECONDARY = '#999';
-/** 热力图星期标签：周一 → 周日 */
-const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+/** 热力图星期标签：已移除（竖排连续填充式无纵轴文字） */
 /**
  * 年度热力图 5 级颜色（0 分钟 = 最浅，最深为海蓝）。
  * 注：0 分钟档在暗色下改用深灰底（#232a30）以免整片浅色刺眼，数据档颜色严格不变。
@@ -210,47 +209,39 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
   );
 
   /**
-   * 年度网格几何 + 单元格 + 月份标签：
-   * - 以「今年 1 月 1 日所在周的周一」为网格左上角，7 行 × weeks 列铺满全年；
-   * - 首周若含上年末尾日期，或格子落在未来，则保留槽位但不渲染（透明占位），
-   *   以维持 CSS Grid 按列流动的对齐关系；
-   * - 月份标签放在该月 1 号所在列的顶部，同列重叠或尚未到来的月份跳过。
+   * 年度热力图（竖排连续填充日历式）：
+   * - 每列 14 格，从上到下连续排日期（第 1 列 = 1月1~14日，第 2 列从 1月15日 接续，全年约 27 列）；
+   * - 横轴每 3 个月（1月/4月/7月/10月）在该月 1 号所在列上方标记；无纵轴文字；
+   * - 未来日期保留槽位但不渲染（透明占位维持列对齐）。
    */
   const yearGrid = useMemo(() => {
     const year = now.getFullYear();
     const jan1 = new Date(year, 0, 1);
-    const lead = (jan1.getDay() + 6) % 7; // 1 号在首列中的行偏移（0 = 1 号恰为周一）
-    const gridStart = new Date(year, 0, 1 - lead); // 网格左上角（Date 构造器自动跨月回退到上一年 12 月）
     const daysInYear = Math.round((new Date(year + 1, 0, 1).getTime() - jan1.getTime()) / 86400000); // 365/366
-    const weeks = Math.ceil((lead + daysInYear) / 7); // ≤ 53 列
 
     const cells: Array<HeatCell | null> = [];
     let maxMinutes = 0;
-    for (let i = 0; i < weeks * 7; i++) {
-      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+    for (let i = 0; i < daysInYear; i++) {
+      const d = new Date(year, 0, 1 + i);
       const iso = toISODate(d);
-      if (d.getFullYear() !== year || iso > todayStr) {
-        cells.push(null); // 上年溢出 / 未来日期：不渲染（透明占位保持对齐）
+      if (iso > todayStr) {
+        cells.push(null); // 未来日期：不渲染（透明占位保持对齐）
         continue;
       }
       const minutes = yearMinutesByDay.get(iso) ?? 0;
       maxMinutes = Math.max(maxMinutes, minutes);
-      cells.push({ iso, minutes, weekday: (d.getDay() + 6) % 7 });
+      cells.push({ iso, minutes, weekday: 0 });
     }
 
+    // 月份标签：只在 1/4/7/10 月的 1 号所在列（每 3 个月一个）
     const monthLabels: Array<{ col: number; name: string }> = [];
-    let lastCol = -1;
-    for (let m = 0; m < 12; m++) {
+    for (const m of [0, 3, 6, 9]) {
       const first = new Date(year, m, 1);
-      if (toISODate(first) > todayStr) break; // 月份尚未开始：无可见格子，不标标签
+      if (toISODate(first) > todayStr) break; // 该月尚未开始
       const dayOfYear = Math.round((first.getTime() - jan1.getTime()) / 86400000);
-      const col = Math.floor((lead + dayOfYear) / 7); // 该月 1 号所在列
-      if (col > lastCol) {
-        monthLabels.push({ col, name: `${m + 1}月` });
-        lastCol = col; // 两月落在同一列时只保留先到的，避免文字重叠
-      }
+      monthLabels.push({ col: Math.floor(dayOfYear / 14), name: `${m + 1}月` });
     }
-    return { cells, weeks, monthLabels, maxMinutes };
+    return { cells, cols: Math.ceil(daysInYear / 14), monthLabels, maxMinutes };
   }, [now, todayStr, yearMinutesByDay]);
 
   /**
@@ -416,11 +407,14 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
     if (!wrap) return;
     const wrapRect = wrap.getBoundingClientRect();
     const cellRect = e.currentTarget.getBoundingClientRect();
-    setHeatTip({
-      x: cellRect.left - wrapRect.left + cellRect.width / 2, // 格子中心
-      y: cellRect.top - wrapRect.top, // 格子上沿
-      text: `${cell.iso} ${WEEKDAY_LABELS[cell.weekday]} · 专注 ${cell.minutes} 分钟`,
-    });
+      // 竖排日历式热力图：tooltip 显示「X月X日 专注 N 分钟」（不带周几）
+      const m = cell.iso.slice(5, 7).replace(/^0/, '')
+      const d = cell.iso.slice(8, 10).replace(/^0/, '')
+      setHeatTip({
+        x: cellRect.left - wrapRect.left + cellRect.width / 2, // 格子中心
+        y: cellRect.top - wrapRect.top, // 格子上沿
+        text: `${m}月${d}日 · 专注 ${cell.minutes} 分钟`,
+      });
   };
 
   return (
@@ -468,63 +462,45 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
             <div className="overflow-x-auto pb-1">
               {/* 整体容器：tooltip 以它为定位基准 */}
               <div ref={heatWrapRef} className="relative w-fit min-w-full">
-                {/* 月份标签行（对齐各自月份 1 号所在的列；左侧留出星期标签的宽度） */}
-                <div className="flex">
-                  <div className="w-7 shrink-0" />
-                  {/* 标签为绝对定位，容器需显式宽度 = 网格总宽，供 w-fit 外壳正确计算 */}
-                  <div className="relative h-4" style={{ width: yearGrid.weeks * 14 - 2 }}>
-                    {yearGrid.monthLabels.map(({ col, name }) => (
-                      <span
-                        key={name}
-                        className="absolute top-0 whitespace-nowrap text-[10px] text-neutral-400"
-                        style={{ left: col * 14 }} // 每列宽 12px + 间距 2px = 14px
-                      >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
+                {/* 月份标签行：每 3 个月标记一次（1月/4月/7月/10月），无纵轴文字 */}
+                <div className="relative mb-1 h-4" style={{ width: yearGrid.cols * 14 - 2 }}>
+                  {yearGrid.monthLabels.map(({ col, name }) => (
+                    <span
+                      key={name}
+                      className="absolute top-0 whitespace-nowrap text-[10px] text-neutral-400"
+                      style={{ left: col * 14 }} // 每列宽 12px + 间距 2px = 14px
+                    >
+                      {name}
+                    </span>
+                  ))}
                 </div>
 
-                {/* 主体：左侧星期标签（只标 周一/周三/周五）+ 7 行 × N 列网格 */}
-                <div className="flex">
-                  <div className="flex w-7 shrink-0 flex-col gap-[2px] text-[9px] leading-none text-neutral-400">
-                    {WEEKDAY_LABELS.map((w, row) => (
-                      <div key={w} className="flex h-3 items-center">
-                        {row === 0 || row === 2 || row === 4 ? w : ''}
-                      </div>
-                    ))}
-                  </div>
-                  {/* grid-auto-flow: column → 依次按「列」填充，每 7 格正好是一周（周一在上、周日在下） */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: `repeat(${yearGrid.weeks}, 12px)`,
-                      gridAutoRows: '12px',
-                      gap: '2px',
-                      gridAutoFlow: 'column',
-                    }}
-                  >
-                    {yearGrid.cells.map((cell, i) =>
-                      cell ? (
-                        <div
-                          key={cell.iso}
-                          onMouseEnter={(e) => showHeatTip(e, cell)}
-                          onMouseLeave={() => setHeatTip(null)}
-                          className={`w-3 h-3 rounded-[2px] transition-transform hover:scale-125 ${
-                            cell.iso === todayStr ? 'ring-1 ring-haruto-sea ring-offset-0' : ''
-                          } ${levelOf(cell.minutes) === 0 ? 'bg-[#eef4f8] dark:bg-[#232a30]' : ''}`}
-                          style={
-                            levelOf(cell.minutes) > 0
-                              ? { backgroundColor: HEAT_LEVELS[levelOf(cell.minutes)] }
-                              : undefined
-                          }
-                        />
-                      ) : (
-                        // 透明占位：上年溢出 / 未来日期不渲染，但保留槽位以维持列对齐
-                        <div key={`empty-${i}`} className="w-3 h-3 rounded-[2px]" />
-                      )
-                    )}
-                  </div>
+                {/* 主体：每列 14 格，从上到下连续填充日期（第 1 列 = 1月1~14 日，第 2 列从 1月15 日接续） */}
+                <div className="flex gap-[2px]">
+                  {Array.from({ length: yearGrid.cols }, (_, c) => (
+                    <div key={c} className="flex flex-col gap-[2px]">
+                      {yearGrid.cells.slice(c * 14, c * 14 + 14).map((cell, i) =>
+                        cell ? (
+                          <div
+                            key={cell.iso}
+                            onMouseEnter={(e) => showHeatTip(e, cell)}
+                            onMouseLeave={() => setHeatTip(null)}
+                            className={`w-3 h-3 rounded-[2px] transition-transform hover:scale-125 ${
+                              cell.iso === todayStr ? 'ring-1 ring-haruto-sea ring-offset-0' : ''
+                            } ${levelOf(cell.minutes) === 0 ? 'bg-[#eef4f8] dark:bg-[#232a30]' : ''}`}
+                            style={
+                              levelOf(cell.minutes) > 0
+                                ? { backgroundColor: HEAT_LEVELS[levelOf(cell.minutes)] }
+                                : undefined
+                            }
+                          />
+                        ) : (
+                          // 透明占位：未来日期不渲染，但保留槽位以维持列对齐
+                          <div key={`empty-${c}-${i}`} className="w-3 h-3 rounded-[2px]" />
+                        )
+                      )}
+                    </div>
+                  ))}
                 </div>
 
                 {/* 图例（少 → 多）+ 年度摘要 */}
