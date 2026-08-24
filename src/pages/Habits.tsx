@@ -1,7 +1,7 @@
 // 习惯打卡页：周 / 月 / 年 三视图
 // - 周视图：顶部周一~日横向星期栏（今日海蓝高亮+下划线），习惯为行、星期为列的打卡矩阵
 //   打卡格统一 w-8 h-8 rounded-full：未打 = 空心浅灰描边圆，已打 = 实心绿(#5b8c5a)+白✓
-// - 月视图：像一张表格——最左列竖向 1~31 日期，每个习惯一列（竖排名 + 上=月目标/下=当月已打数）
+// - 月视图：像一张表格——最左列竖向 1~31 日期，每个习惯一列（icon + 横排名可换行，名下并排「目标/打卡」两数）
 // - 年视图：极简透明边框表格（习惯名 / 已打卡 / 年目标 三列）
 //   年目标默认动态计算 = 月目标 ×（创建月~当年12月的月数，含头含尾，如 5 月创建 = 8 个月），
 //   灰显；点击数字可写一个"覆盖值"到 localStorage（key=mh-year-target-{habitId}，不动 types.ts），
@@ -452,7 +452,7 @@ export default function Habits({
           ))}
         </div>
       ) : view === 'month' ? (
-        /* ===== 月视图：最左列竖向 1~31 日期 × 每习惯一列（竖排名 + 目标/已打叠放） ===== */
+        /* ===== 月视图：最左列竖向 1~31 日期 × 每习惯一列（icon+横排名可换行，下并排目标/打卡两数） ===== */
         <div className="mt-4 select-none rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-x-auto">
           <div className="min-w-max">
             {/* 表头行：每个习惯一列 */}
@@ -468,55 +468,61 @@ export default function Habits({
                   title="右键可编辑"
                   className="py-2.5 px-1 flex flex-col items-center gap-1"
                 >
-                  <span className="text-base leading-none">{h.icon}</span>
-                  {editingNameId === h.id ? (
-                    /* 名称行内编辑（竖排名换成普通小输入框） */
-                    <input
-                      autoFocus
-                      value={nameDraft}
-                      onChange={(e) => setNameDraft(e.target.value)}
-                      onBlur={commitName}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitName()
-                        if (e.key === 'Escape') setEditingNameId(null)
-                      }}
-                      className="w-12 text-[10px] rounded border border-haruto-sea bg-transparent px-1 py-0.5 text-center outline-none"
-                    />
-                  ) : (
-                    <span className="max-h-16 overflow-hidden [writing-mode:vertical-rl] text-[10px] leading-tight text-neutral-500 dark:text-neutral-400">
-                      {h.name}
-                    </span>
-                  )}
-                  {editingTargetId === h.id ? (
-                    /* 月目标行内小输入框：回车/失焦保存 */
-                    <input
-                      autoFocus
-                      type="number"
-                      min={1}
-                      value={targetDraft}
-                      onChange={(e) => setTargetDraft(e.target.value)}
-                      onBlur={commitTarget}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitTarget()
-                        if (e.key === 'Escape') setEditingTargetId(null)
-                      }}
-                      className="w-12 rounded border border-haruto-sea bg-transparent px-1 py-0.5 text-[11px] text-center tabular-nums text-[#e07a5f] outline-none"
-                    />
-                  ) : (
-                    /* 上：月目标（橙红，点击变行内输入框） */
-                    <button
-                      onClick={() => {
-                        setEditingTargetId(h.id)
-                        setTargetDraft(String(h.monthlyTarget))
-                      }}
-                      title="点击修改月目标"
-                      className="text-[11px] font-bold text-[#e07a5f] tabular-nums hover:underline"
-                    >
-                      {h.monthlyTarget}
-                    </button>
-                  )}
-                  {/* 下：当月已打数（茶绿） */}
-                  <span className="text-[11px] font-bold text-[#6a994e] tabular-nums">{monthCount(h.id)}</span>
+                  {/* icon + 习惯名：横向排列；名字 min-w-14/max-w-20 允许自动换行，保证各列宽度统一、间距一致 */}
+                  <div className="flex items-center justify-center gap-1">
+                    <span className="text-base leading-none shrink-0">{h.icon}</span>
+                    {editingNameId === h.id ? (
+                      /* 名称行内编辑（横向小输入框） */
+                      <input
+                        autoFocus
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onBlur={commitName}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitName()
+                          if (e.key === 'Escape') setEditingNameId(null)
+                        }}
+                        className="w-16 text-[10px] rounded border border-haruto-sea bg-transparent px-1 py-0.5 text-center outline-none"
+                      />
+                    ) : (
+                      <span className="min-w-14 max-w-20 text-center text-[10px] leading-tight break-words text-neutral-500 dark:text-neutral-400">
+                        {h.name}
+                      </span>
+                    )}
+                  </div>
+                  {/* 名字下方：「目标N」橙红（点击行内编辑）+「打卡N」茶绿，横向并排、紧凑显示 */}
+                  <div className="flex items-center gap-1.5">
+                    {editingTargetId === h.id ? (
+                      /* 月目标行内小输入框：回车/失焦保存 */
+                      <input
+                        autoFocus
+                        type="number"
+                        min={1}
+                        value={targetDraft}
+                        onChange={(e) => setTargetDraft(e.target.value)}
+                        onBlur={commitTarget}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitTarget()
+                          if (e.key === 'Escape') setEditingTargetId(null)
+                        }}
+                        className="w-12 rounded border border-haruto-sea bg-transparent px-1 py-0.5 text-[10px] text-center tabular-nums text-[#e07a5f] outline-none"
+                      />
+                    ) : (
+                      /* 月目标（橙红，点击变行内输入框，编辑逻辑不变） */
+                      <button
+                        onClick={() => {
+                          setEditingTargetId(h.id)
+                          setTargetDraft(String(h.monthlyTarget))
+                        }}
+                        title="点击修改月目标"
+                        className="text-[10px] font-bold text-[#e07a5f] tabular-nums hover:underline"
+                      >
+                        目标{h.monthlyTarget}
+                      </button>
+                    )}
+                    {/* 当月已打数（茶绿） */}
+                    <span className="text-[10px] font-bold text-[#6a994e] tabular-nums">打卡{monthCount(h.id)}</span>
+                  </div>
                 </div>
               ))}
             </div>

@@ -1,5 +1,5 @@
 // App = 三层结构：L1 图标导航栏 → L2 清单树（任务模块）→ L3 内容区 + 右侧详情
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Db, Task, Tag, Habit, ImportantDay } from './types'
 import PomodoroBar from './components/PomodoroBar'
 import { IconTasks, IconTimer, IconCalendar, IconCheck, IconChart, IconHeart, IconFilm, IconPlane, IconChat, IconTown, IconSun, IconMoon } from './components/icons'
@@ -58,6 +58,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pomoTarget, setPomoTarget] = useState<Task | null>(null)
   const [pomo, setPomo] = useState<Pomo | null>(null)
+  const pomoCompletingRef = useRef(false) // 完成互斥锁（防双组件重复记录）
   // L2 清单树选中项
   const [activeListId, setActiveListId] = useState<string>('all')
   // 新建清单表单
@@ -177,29 +178,30 @@ export default function App() {
           swAccum: p.mode === 'stopwatch' ? p.swAccum + (Date.now() - p.startedAt) : 0,
         }
       }
-      // 继续：从暂停点接续，不从零开始
+      // 继续：从暂停点接续（正计时 startedAt 重置为现在，累计增量进 swAccum，避免双倍计数）
       return {
         ...p,
         running: true,
         endAt: p.mode === 'countdown' ? Date.now() + p.remainingMs : 0,
-        startedAt: p.mode === 'stopwatch' ? Date.now() - p.swAccum : p.startedAt,
+        startedAt: Date.now(),
       }
     })
 
-  const completePomo = () =>
-    setPomo((p) => {
-      if (p) {
-        const minutes = Math.max(1, Math.round((Date.now() - p.startedAt) / 60000))
-        setDb((d) => ({
-          ...d,
-          focusSessions: [
-            { id: uid(), taskId: p.taskId, startedAt: new Date(p.startedAt).toISOString(), minutes },
-            ...d.focusSessions,
-          ],
-        }))
-      }
-      return null
-    })
+  const completePomo = () => {
+    // 互斥锁：浮动条和专注页都可能触发"到点完成"，确保只记一次
+    if (pomoCompletingRef.current || !pomo) return
+    pomoCompletingRef.current = true
+    const minutes = Math.max(1, Math.round((Date.now() - pomo.startedAt) / 60000))
+    setDb((d) => ({
+      ...d,
+      focusSessions: [
+        { id: uid(), taskId: pomo.taskId, startedAt: new Date(pomo.startedAt).toISOString(), minutes },
+        ...d.focusSessions,
+      ],
+    }))
+    setPomo(null)
+    setTimeout(() => { pomoCompletingRef.current = false }, 50)
+  }
 
   // ---------- 派生 ----------
   const selected = db.tasks.find((t) => t.id === selectedId) ?? null

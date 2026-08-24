@@ -103,9 +103,11 @@ export function TaskNode(props: {
   selectedId: string | null
   onSelect: (id: string | null) => void
   defaultExpanded?: boolean
+  _seen?: Set<string> // 递归防环：祖先链上出现过的 id 不再展开
 }) {
-  const { task, allTasks, tags, depth, onUpdate, onDelete, onAdd, onPomodoro, selectedId, onSelect, defaultExpanded } = props
-  const children = allTasks.filter((c) => c.parentTaskId === task.id)
+  const { task, allTasks, tags, depth, onUpdate, onDelete, onAdd, onPomodoro, selectedId, onSelect, defaultExpanded, _seen } = props
+  const seen = _seen ?? new Set([task.id])
+  const children = allTasks.filter((c) => c.parentTaskId === task.id && !seen.has(c.id))
   const [expanded, setExpanded] = useState(!!defaultExpanded)
   const [editing, setEditing] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
@@ -229,10 +231,12 @@ export function TaskNode(props: {
         </div>
       )}
 
-      {/* 递归渲染子任务 */}
-      {expanded && children.map((c) => (
-        <TaskNode key={c.id} {...props} task={c} depth={depth + 1} />
-      ))}
+      {/* 递归渲染子任务（防环：每层把自身 id 记入祖先链） */}
+      {expanded && children.map((c) => {
+        const childSeen = new Set(seen)
+        childSeen.add(c.id)
+        return <TaskNode key={c.id} {...props} task={c} depth={depth + 1} _seen={childSeen} />
+      })}
 
       {menu && (
         <FloatingMenu

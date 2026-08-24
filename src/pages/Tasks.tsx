@@ -1,6 +1,6 @@
 // 任务页：按 L2 清单树选中项过滤，任务以无限嵌套树展示
 import type { Task, Tag } from '../types'
-import TaskNode, { todayStr } from './Today'
+import { TaskNode, todayStr } from './Today'
 
 export default function Tasks(props: {
   tasks: Task[]

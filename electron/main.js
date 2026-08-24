@@ -31,6 +31,23 @@ function loadDb() {
     for (const key of Object.keys(defaults)) {
       if (db[key] === undefined) db[key] = defaults[key]
     }
+    // 数据自愈：断开父子环 / 悬空父引用（历史测试数据可能成环导致界面白屏）
+    const ids = new Set(db.tasks.map((t) => t.id))
+    for (const t of db.tasks) {
+      if (t.parentTaskId && (!ids.has(t.parentTaskId) || t.parentTaskId === t.id)) {
+        t.parentTaskId = null
+      }
+    }
+    // 逐个沿链走，超过任务总数仍未到顶 = 成环，断开该链
+    const n = db.tasks.length
+    for (const t of db.tasks) {
+      let cur = t, steps = 0
+      while (cur && cur.parentTaskId && steps <= n) {
+        cur = db.tasks.find((x) => x.id === cur.parentTaskId)
+        steps++
+      }
+      if (steps > n) t.parentTaskId = null
+    }
     return db
   } catch {
     return defaultDb()
