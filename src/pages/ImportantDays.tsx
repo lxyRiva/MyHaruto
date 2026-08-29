@@ -188,14 +188,23 @@ interface SubMenuState {
   y: number
 }
 
-// 生理期小气泡弹窗状态：kind = start(问开始) / end(问结束) / info(仅提示)
-interface PopState {
-  date: string
-  x: number
-  y: number
-  side: 'left' | 'right' // 气泡锚在日期格的哪一侧（决定小箭头位置）
-  kind: 'start' | 'end' | 'info'
-  info?: string // kind=info 时的提示文案
+// 开关面板用的 Toggle（美柚式滑动开关）
+function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+        on ? 'bg-[#d94f6e]' : 'bg-neutral-300 dark:bg-neutral-600'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
+          on ? 'left-[22px]' : 'left-0.5'
+        }`}
+      />
+    </button>
+  )
 }
 
 // 编辑表单草稿（回填现有值）
@@ -251,6 +260,7 @@ export default function ImportantDays({
   onUpdateDay,
   onDeleteDay,
   onPeriodMark,
+  onDeletePeriod,
 }: {
   importantDays: ImportantDay[]
   periodRecords: PeriodRecord[]
@@ -258,6 +268,7 @@ export default function ImportantDays({
   onUpdateDay: (id: string, patch: Partial<ImportantDay>) => void
   onDeleteDay: (id: string) => void
   onPeriodMark: (date: string, kind: 'start' | 'end') => void // 标记经期开始/结束
+  onDeletePeriod: (startDate: string) => void // 删除一条经期记录（开关关=取消记录）
 }) {
   /* ---------- 左栏：添加表单状态 ---------- */
   const [adding, setAdding] = useState(false)
