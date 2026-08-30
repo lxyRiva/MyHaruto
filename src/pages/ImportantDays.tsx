@@ -1,21 +1,25 @@
 // 重要日页：左栏重要日（🎂生日/🎉节日/📌自定义）竖版图文卡管理，右栏生理期迷你月历（记录 + 预测）
 // 卡片：图上字下（图区 60% PNG 插画 / 文区 40% 标题+日期+倒计时胶囊），网格 2~3 列，
 //       白底圆角 xl 柔和阴影，hover 轻微上浮；右键菜单（编辑/重复/日期/置顶/删除，带二级子菜单）、已归档折叠区保留。
-// 图样：每类型仅 3 张 PNG 插画（public/assets/days/），索引存 localStorage（key=mh-day-style-{id}，
-//       不污染 note 数据）；任何旧索引（SVG 时代序号 / PNG+SVG 混排下标）读取时统一 mod 3 归入对应 PNG。
+// 图样：全部 9 张 PNG 插画（public/assets/days/，birthday/festival/custom 各 3 张，不按类型过滤），
+//       全局索引 0-8 存 localStorage（key=mh-day-style-{id}，不污染 note 数据）；
+//       旧「按类型 0-2」索引由挂载时的一次性迁移（marker=mh-day-style-v2）换算为全局索引。
 // 右键菜单二级子菜单：重复▸（不重复/每年/每月/每周/每天——「每年」= types.ts 的 repeatYearly，
 //       每月/每周/每天本轮仅 UI，存 mh-day-repeat-{id}，待 types 扩展字段后接入计算）；
-//       日期▸（公历/农历，存 mh-day-lunar-{id}，true=农历，仅影响显示）。
+//       日期▸（公历/农历，存 mh-day-lunar-{id}，true=农历，仅影响显示；新建/编辑表单内也可切换）。
 // 置顶：存 mh-day-pinned-{id}，置顶卡片排列表最前并带 📌 小标记。
 // 农历：标记为农历的卡片显示「农历X月X日」（solarlunar.solar2lunar 的 monthCn/dayCn），
-//       编辑表单选日期后实时预览；存储与倒计时计算始终保持公历原值（小字提示「按公历日期提醒」）。
-// 生理期：点击日期弹出小气泡（开始/结束确认），绝不自动测算结束——无 endDate 只标记开始日，不蔓延；
+//       新建/编辑表单选日期后实时预览；存储与倒计时计算始终保持公历原值（小字提示「按公历日期提醒」）。
+// 生理期：点击日期弹出居中确认弹窗（开始/结束确认），绝不自动测算结束——无 endDate 只标记开始日，不蔓延；
 //        预测（浅红虚线）仅作显示建议。注意：经期预测只是日历推算，仅供参考，非医疗建议。
+//        栏底部有「AI 的关心」只读入口（M6 定时行为预留，名字读 settings.aiName）。
 // 所有编辑均为行内表单（Electron 下禁用 prompt/alert）。
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { ImportantDay, PeriodRecord } from '../types'
 import solarlunar from 'solarlunar'
+import { IconChat, IconChevron } from '../components/icons'
+import FloatingMenu from '../components/FloatingMenu'
 
 /* ---------- 日期工具（全部走本地时区，避免 toISOString 的 UTC 偏移问题） ---------- */
 
@@ -51,7 +55,7 @@ const TYPE_OPTIONS: { value: ImportantDay['type']; label: string }[] = [
   { value: 'custom', label: '📌 自定义' },
 ]
 
-/* ---------- 图样变体表：仅 PNG 插画（每类型 3 张，public/assets/days/） ---------- */
+/* ---------- 图样变体表：全部 9 张 PNG 插画（public/assets/days/），不按类型过滤 ---------- */
 
 const PNG_VARIANTS: Record<ImportantDay['type'], { file: string; name: string }[]> = {
   birthday: [
@@ -70,6 +74,13 @@ const PNG_VARIANTS: Record<ImportantDay['type'], { file: string; name: string }[
     { file: 'custom-plant.png', name: '绿植' },
   ],
 }
+
+// 全局图样表：索引 0-8 依次为 birthday 0-2 / festival 3-5 / custom 6-8（不再按类型过滤）
+const PNG_ALL: { file: string; name: string }[] = [
+  ...PNG_VARIANTS.birthday,
+  ...PNG_VARIANTS.festival,
+  ...PNG_VARIANTS.custom,
+]
 
 // localStorage key 前缀：mh-day-style-{id} = 图样索引（0..2）
 const DS_PREFIX = 'mh-day-style-'
@@ -104,10 +115,10 @@ function lunarText(s: string): string {
   return lun === -1 ? '' : `农历${lun.monthCn}${lun.dayCn}`
 }
 
-/* ---------- 卡片图区：PNG 插画（唯一图样体系） ---------- */
+/* ---------- 卡片图区：PNG 插画（唯一图样体系，全局索引 0-8） ---------- */
 // 相对路径 assets/days/xxx.png（Electron 从 dist 加载时相对路径才正确）；object-cover 满铺图区
-function DayArtPng({ type, variant }: { type: ImportantDay['type']; variant: number }) {
-  const png = PNG_VARIANTS[type][variant] ?? PNG_VARIANTS[type][0] // 索引越界兜底第一张
+function DayArtPng({ variant }: { variant: number }) {
+  const png = PNG_ALL[variant] ?? PNG_ALL[0] // 索引越界兜底第一张
   return (
     <img
       src={`assets/days/${png.file}`}
@@ -118,20 +129,18 @@ function DayArtPng({ type, variant }: { type: ImportantDay['type']; variant: num
   )
 }
 
-// 图样选择器：当前类型的 3 张 PNG 缩略图（表单共用）
+// 图样选择器：全部 9 张 PNG 缩略图（不按类型过滤，表单共用）
 function VariantPicker({
-  type,
   value,
   onChange,
 }: {
-  type: ImportantDay['type']
   value: number
   onChange: (v: number) => void
 }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <span className="text-xs text-neutral-500 select-none">图样</span>
-      {PNG_VARIANTS[type].map((p, i) => (
+      {PNG_ALL.map((p, i) => (
         <button
           key={p.file}
           type="button"
@@ -207,12 +216,9 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   )
 }
 
-// 生理期小气泡弹窗状态：kind = start(问开始) / end(问结束) / info(仅提示)
+// 生理期内嵌确认条状态：kind = start(问开始) / end(问结束) / info(仅提示)
 interface PopState {
   date: string
-  x: number
-  y: number
-  side: 'left' | 'right' // 气泡锚在日期格的哪一侧（决定小箭头位置）
   kind: 'start' | 'end' | 'info'
   info?: string // kind=info 时的提示文案
 }
@@ -266,19 +272,23 @@ function MenuRow({
 export default function ImportantDays({
   importantDays,
   periodRecords,
+  aiName,
   onAddDay,
   onUpdateDay,
   onDeleteDay,
   onPeriodMark,
   onDeletePeriod,
+  onPeriodReopen,
 }: {
   importantDays: ImportantDay[]
   periodRecords: PeriodRecord[]
+  aiName: string // AI 角色显示名（settings.aiName）
   onAddDay: (d: Omit<ImportantDay, 'id'>) => void
   onUpdateDay: (id: string, patch: Partial<ImportantDay>) => void
   onDeleteDay: (id: string) => void
   onPeriodMark: (date: string, kind: 'start' | 'end') => void // 标记经期开始/结束
-  onDeletePeriod: (startDate: string) => void // 删除一条经期记录（开关关=取消记录）
+  onDeletePeriod: (startDate: string) => void // 删除一条经期记录（右键取消/删除用）
+  onPeriodReopen: (startDate: string) => void // 恢复一条已结束记录为进行中（endDate 置 null）
 }) {
   /* ---------- 左栏：添加表单状态 ---------- */
   const [adding, setAdding] = useState(false)
@@ -287,7 +297,8 @@ export default function ImportantDays({
   const [date, setDate] = useState('')
   const [repeatYearly, setRepeatYearly] = useState(false)
   const [remindDays, setRemindDays] = useState(7) // 提前提醒天数，默认 7
-  const [newStyle, setNewStyle] = useState(0) // 新建时选的图样索引，默认 0
+  const [newStyle, setNewStyle] = useState(0) // 新建时选的图样索引（全局 0..8），默认 0
+  const [newLunar, setNewLunar] = useState(false) // 新建时选的历法（false=公历，true=农历仅影响显示）
 
   /* ---------- 左栏：右键菜单（含二级子菜单）/ 行内编辑 / 归档折叠 ---------- */
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -324,17 +335,32 @@ export default function ImportantDays({
           pins[k.slice(PIN_PREFIX.length)] = true
         }
       }
-      // —— 图样索引迁移：只保留 3 张 PNG，任何旧索引（旧 SVG 序号或 PNG+SVG 混排下标）mod 3 归入对应 PNG ——
-      // 回写归一化值（幂等，重复执行结果不变）；0 = 默认图样，清掉 key 保持整洁
+      // —— 图样索引迁移 v2：图样从「按类型 3 张」扩为「全局 9 张」——
+      // 旧语义 0..2（按卡片类型选 PNG）→ 新语义全局 0..8；一次性迁移，marker 防重复执行
+      const typeOf = new Map(importantDays.map((d) => [d.id, d.type]))
+      const MIG_KEY = 'mh-day-style-v2'
+      const migrated = localStorage.getItem(MIG_KEY) === '1'
       const out: Record<string, number> = {}
       for (const k of styleKeys) {
-        const n = Number(localStorage.getItem(k))
-        const norm = Number.isFinite(n) && n > 0 ? n % 3 : 0
-        if (norm > 0) {
-          localStorage.setItem(k, String(norm))
-          out[k.slice(DS_PREFIX.length)] = norm
+        const id = k.slice(DS_PREFIX.length)
+        let n = Number(localStorage.getItem(k))
+        if (!Number.isFinite(n) || n < 0) n = 0
+        if (!migrated) {
+          const off = typeOf.get(id) === 'festival' ? 3 : typeOf.get(id) === 'custom' ? 6 : 0
+          n = off + (n % 3)
+          localStorage.setItem(k, String(n))
+        }
+        if (n > 0) {
+          out[id] = n
         } else {
-          localStorage.removeItem(k)
+          localStorage.removeItem(k) // 0 = 默认图样，清掉 key 保持整洁
+        }
+      }
+      if (!migrated) {
+        try {
+          localStorage.setItem(MIG_KEY, '1')
+        } catch {
+          /* 忽略写入失败 */
         }
       }
       setStyleMap(out)
@@ -406,8 +432,9 @@ export default function ImportantDays({
     })
   }
 
-  /* ---------- 新建重要日后落地图样（onAddDay 不返回 id，靠新增 id 检测） ---------- */
+  /* ---------- 新建重要日后落地图样/历法（onAddDay 不返回 id，靠新增 id 检测） ---------- */
   const pendingStyleRef = useRef<number | null>(null)
+  const pendingLunarRef = useRef(false)
   const knownDayIdsRef = useRef<Set<string> | null>(null)
   useEffect(() => {
     const prev = knownDayIdsRef.current
@@ -417,17 +444,20 @@ export default function ImportantDays({
     if (pending == null || prev == null) return
     pendingStyleRef.current = null
     const fresh = importantDays.find((d) => !prev.has(d.id))
-    if (fresh && pending > 0) setDayStyle(fresh.id, pending)
+    if (fresh) {
+      if (pending > 0) setDayStyle(fresh.id, pending)
+      if (pendingLunarRef.current) setLunarFlag(fresh.id, true)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importantDays])
 
-  /* ---------- 右栏：月历视图状态 / 生理期小气泡 ---------- */
+  /* ---------- 右栏：月历视图状态 / 生理期小气泡 / AI 关心入口 ---------- */
   const [view, setView] = useState(() => {
     const n = new Date()
     return { y: n.getFullYear(), m: n.getMonth() }
   })
-  const [pop, setPop] = useState<PopState | null>(null)
-  const popRef = useRef<HTMLDivElement | null>(null)
+  const [pop, setPop] = useState<PopState | null>(null) // 月历下方内嵌确认条（start/end/info）
+  const [aiCareOpen, setAiCareOpen] = useState(false) // 「AI 的关心」展开态（M6 预留，当前只读占位）
 
   const now = new Date()
   const todayStr = fmtDate(now)
@@ -455,6 +485,7 @@ export default function ImportantDays({
       note: '',
     })
     pendingStyleRef.current = newStyle // 创建后由上面的 effect 把图样索引写入 localStorage
+    pendingLunarRef.current = newLunar // 历法标记一并落地
     // 保存后重置并收起表单
     setTitle('')
     setDate('')
@@ -462,6 +493,7 @@ export default function ImportantDays({
     setRepeatYearly(false)
     setRemindDays(7)
     setNewStyle(0)
+    setNewLunar(false)
     setAdding(false)
   }
 
@@ -538,21 +570,14 @@ export default function ImportantDays({
     setMenu(null)
   }
 
-  // 点击气泡外 / Esc 关闭
+  // Esc 关闭内嵌确认条（等同取消，不改动任何记录）
   useEffect(() => {
     if (!pop) return
-    const onDown = (e: MouseEvent) => {
-      if (popRef.current && !popRef.current.contains(e.target as Node)) setPop(null)
-    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setPop(null)
     }
-    window.addEventListener('mousedown', onDown)
     window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
-    }
+    return () => window.removeEventListener('keydown', onKey)
   }, [pop])
 
   /* ---------- 行内编辑：回填现有值（每年重复的 MM-DD 补上下一次发生的年份供 date 输入框用） ---------- */
@@ -640,39 +665,50 @@ export default function ImportantDays({
     return 'none'
   }
 
-  /* ---------- 点击日期 → 弹出小气泡确认（锚定在该格旁边） ---------- */
+  /* ---------- 生理期右键：取消记录 / 恢复进行中 / 删除记录 ---------- */
+  // 开始日 → 可取消该条记录；结束日 → 最新一条可恢复为进行中，更早的只能删除
+  const recByStart = new Map(periodRecords.map((r) => [r.startDate, r]))
+  const recByEnd = new Map(periodRecords.filter((r) => r.endDate).map((r) => [r.endDate!, r]))
+  const latestRecStart = byStart.length ? byStart[byStart.length - 1].startDate : null
+  type PeriodMenuKind = 'cancel-start' | 'reopen' | 'delete-ended'
+  const [periodMenu, setPeriodMenu] = useState<{ kind: PeriodMenuKind; startDate: string; x: number; y: number } | null>(null)
+  const [periodConfirm, setPeriodConfirm] = useState<{ kind: PeriodMenuKind; startDate: string } | null>(null)
+
+  const handleCellContext = (e: ReactMouseEvent<HTMLButtonElement>, s: string) => {
+    e.preventDefault()
+    if (recByStart.has(s)) {
+      setPeriodMenu({ kind: 'cancel-start', startDate: s, x: e.clientX, y: e.clientY })
+      return
+    }
+    const endRec = recByEnd.get(s)
+    if (endRec) {
+      // 仅最新一条可恢复为进行中（更早的恢复会造成两条进行中记录）
+      const kind: PeriodMenuKind = endRec.startDate === latestRecStart ? 'reopen' : 'delete-ended'
+      setPeriodMenu({ kind, startDate: endRec.startDate, x: e.clientX, y: e.clientY })
+    }
+  }
+
+  /* ---------- 点击日期 → 月历下方内嵌确认条 ---------- */
   // 有未结束记录：点其后日期 = 问「结束」；点开始日本身 / 更早日期 = 提示
   // 无未结束记录：点已记录日期 = 提示；点未记录日期 = 问「开始」
-  const handleCellClick = (e: ReactMouseEvent<HTMLButtonElement>, s: string) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    const W = 196 // 气泡预估宽度
-    const H = 116 // 气泡预估高度
-    let side: 'left' | 'right' = 'right'
-    let x = rect.right + 10
-    if (x + W > window.innerWidth - 8) {
-      x = Math.max(8, rect.left - W - 10) // 右侧放不下 → 翻到左侧
-      side = 'left'
-    }
-    const y = Math.max(8, Math.min(rect.top + rect.height / 2 - H / 2, window.innerHeight - H - 8))
-    const pos = { date: s, x, y, side }
-
+  const handleCellClick = (s: string) => {
     if (openRecord) {
       if (s > openRecord.startDate) {
-        setPop({ ...pos, kind: 'end' }) // 另点一个日期 → 问结束
+        setPop({ date: s, kind: 'end' }) // 另点一个日期 → 问结束
         return
       }
       if (s === openRecord.startDate) {
-        setPop({ ...pos, kind: 'info', info: '该日已记录为经期开始，等待记录结束' })
+        setPop({ date: s, kind: 'info', info: '该日已记录为经期开始，等待记录结束' })
         return
       }
-      setPop({ ...pos, kind: 'info', info: `已有开始于 ${openRecord.startDate} 的未结束记录` })
+      setPop({ date: s, kind: 'info', info: `已有开始于 ${openRecord.startDate} 的未结束记录` })
       return
     }
     if (isRecorded(s)) {
-      setPop({ ...pos, kind: 'info', info: '该日期已在经期记录内' })
+      setPop({ date: s, kind: 'info', info: '该日期已在经期记录内' })
       return
     }
-    setPop({ ...pos, kind: 'start' }) // 常规：问开始
+    setPop({ date: s, kind: 'start' }) // 常规：问开始
   }
 
   /* ---------- 月历几何 ---------- */
@@ -731,6 +767,12 @@ export default function ImportantDays({
                   bg-transparent px-3 py-2 text-sm outline-none focus:border-haruto-sea"
               />
             </div>
+            {/* 历法为农历：日期选择后实时预览对应农历文字（存储与倒计时仍按公历原值） */}
+            {newLunar && lunarText(date) && (
+              <div className="mt-1 text-[10px] text-neutral-400 select-none">
+                对应：{lunarText(date)} · 按公历日期提醒
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {/* 类型选择 */}
               {TYPE_OPTIONS.map((t) => (
@@ -745,6 +787,27 @@ export default function ImportantDays({
                     }`}
                 >
                   {t.label}
+                </button>
+              ))}
+              {/* 历法切换：公历 / 农历（创建后写入标记，仅影响显示） */}
+              <span className="text-xs text-neutral-500 select-none">历法</span>
+              {(
+                [
+                  ['solar', '公历'],
+                  ['lunar', '农历'],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  onClick={() => setNewLunar(v === 'lunar')}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors
+                    ${
+                      newLunar === (v === 'lunar')
+                        ? 'border-haruto-sea bg-haruto-sea/10 text-haruto-sea font-medium'
+                        : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:border-neutral-400'
+                    }`}
+                >
+                  {label}
                 </button>
               ))}
               {/* 每年重复 */}
@@ -772,9 +835,9 @@ export default function ImportantDays({
                 天提醒
               </label>
             </div>
-            {/* 图样选择（3 张 PNG） */}
+            {/* 图样选择（9 张 PNG 全量） + 历法选择（公历/农历） */}
             <div className="mt-2.5">
-              <VariantPicker type={type} value={newStyle} onChange={setNewStyle} />
+              <VariantPicker value={newStyle} onChange={setNewStyle} />
             </div>
             <div className="mt-3 flex justify-end gap-2">
               <button
@@ -903,7 +966,7 @@ export default function ImportantDays({
               </label>
             </div>
             <div className="mt-2.5">
-              <VariantPicker type={draft.type} value={editStyle} onChange={setEditStyle} />
+              <VariantPicker value={editStyle} onChange={setEditStyle} />
             </div>
             <input
               value={draft.note}
@@ -958,7 +1021,7 @@ export default function ImportantDays({
                 >
                   {/* 图区（上 60%）：PNG 插画 <img> 满铺 */}
                   <div className="h-[60%] overflow-hidden">
-                    <DayArtPng type={d.type} variant={styleIdx} />
+                    <DayArtPng variant={styleIdx} />
                   </div>
                   {/* 文区（下 40%）：标题（14px 粗体）→ 日期（12px 灰）→ 倒计时胶囊 */}
                   <div className="h-[40%] px-3 pt-2 pb-2.5 flex flex-col min-w-0">
@@ -1044,7 +1107,7 @@ export default function ImportantDays({
                     >
                       {/* 小图样缩略图（PNG 插画） */}
                       <span className="w-12 h-9 shrink-0 rounded-md overflow-hidden border border-neutral-200 dark:border-neutral-700">
-                        <DayArtPng type={d.type} variant={styleIdx} />
+                        <DayArtPng variant={styleIdx} />
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{d.title}</div>
@@ -1135,12 +1198,13 @@ export default function ImportantDays({
             return (
               <button
                 key={s}
-                onClick={(e) => handleCellClick(e, s)}
+                onClick={() => handleCellClick(s)}
+                onContextMenu={(e) => handleCellContext(e, s)}
                 title={
                   st === 'open'
-                    ? '该日已记录经期开始（待记录结束）'
+                    ? '该日已记录经期开始（右键可取消）'
                     : st === 'recorded'
-                      ? '已记录'
+                      ? '已记录（右键管理）'
                       : st === 'predicted'
                         ? '预测（仅供参考）'
                         : '点击记录开始/结束'
@@ -1149,7 +1213,7 @@ export default function ImportantDays({
                   transition-transform duration-200 hover:scale-105
                   ${
                     st === 'open'
-                      ? 'bg-[#ee8888] text-neutral-800'
+                      ? 'bg-[#e88888] text-neutral-800'
                       : st === 'recorded'
                         ? 'bg-[#f4a6a6] text-neutral-800'
                         : st === 'predicted'
@@ -1170,8 +1234,12 @@ export default function ImportantDays({
           })}
         </div>
 
-        {/* 底部图例：已记录 / 预测 + 操作提示 */}
+        {/* 底部图例：进行中 / 已记录 / 预测 + 操作提示 */}
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-neutral-400">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-[4px] bg-[#e88888]" />
+            进行中
+          </span>
           <span className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-[4px] bg-[#f4a6a6]" />
             已记录
@@ -1184,37 +1252,25 @@ export default function ImportantDays({
         </div>
         {/* 免责说明 */}
         <div className="mt-1.5 text-[10px] text-neutral-400">预测为日历推算，非医疗建议</div>
-      </aside>
 
-      {/* ===== 生理期确认弹窗（居中模态：点日期 → 月经开始了吗？/已有开始 → 月经结束了吗？） ===== */}
-      {pop && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 animate-[fadeSlideIn_.15s_ease]"
-          onClick={() => setPop(null)}
-        >
-          <div
-            ref={popRef}
-            onClick={(e) => e.stopPropagation()}
-            className="w-72 rounded-2xl border border-neutral-200 dark:border-neutral-700
-              bg-white dark:bg-neutral-800 shadow-2xl p-5"
-          >
-            {/* 问题 / 提示标题 */}
-            <div className="text-sm font-semibold select-none">
+        {/* ===== 生理期内嵌确认条（点日期出现在这里：开始/结束确认或提示，替代原居中弹窗） ===== */}
+        {pop && (
+          <div className="mt-3 rounded-xl border border-haruto-sea/30 bg-haruto-sea/[0.04] dark:bg-haruto-sea/[0.08] p-3 animate-[fadeSlideIn_.15s_ease]">
+            <div className="text-xs font-semibold select-none">
               {pop.kind === 'start' ? '月经开始了吗？' : pop.kind === 'end' ? '月经结束了吗？' : '提示'}
+              <span className="ml-2 font-normal text-neutral-400 tabular-nums">{pop.kind === 'info' ? '' : pop.date}</span>
             </div>
-            {/* 日期 / 提示正文 */}
-            <div className="mt-1 text-xs text-neutral-400 tabular-nums select-none">
-              {pop.kind === 'info' ? pop.info : pop.date}
-            </div>
-            {/* 开关按钮：开始|取消 / 结束|取消 / 知道啦 */}
-            <div className="mt-4 flex gap-2">
+            {pop.kind === 'info' && (
+              <div className="mt-0.5 text-[11px] text-neutral-400 select-none">{pop.info}</div>
+            )}
+            <div className="mt-2.5 flex items-center gap-2">
               {pop.kind !== 'info' && (
                 <button
                   onClick={() => {
                     onPeriodMark(pop.date, pop.kind === 'end' ? 'end' : 'start')
                     setPop(null)
                   }}
-                  className="flex-1 text-xs py-2 rounded-lg bg-[#d94f6e] text-white font-medium
+                  className="text-xs px-4 py-1.5 rounded-lg bg-[#d94f6e] text-white font-medium
                     hover:opacity-90 transition-opacity select-none"
                 >
                   {pop.kind === 'start' ? '开始' : '结束'}
@@ -1222,11 +1278,97 @@ export default function ImportantDays({
               )}
               <button
                 onClick={() => setPop(null)}
-                className={`text-xs py-2 rounded-lg border border-neutral-200 dark:border-neutral-600
-                  text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors select-none
-                  ${pop.kind !== 'info' ? 'flex-1' : 'w-full'}`}
+                className="text-xs px-3 py-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200
+                  transition-colors select-none"
               >
                 {pop.kind === 'info' ? '知道啦' : '取消'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ===== AI 的关心（M6 定时行为预留：经期提醒/关怀留言将出现在这里；M5 先做只读占位） ===== */}
+        <div className="mt-3 rounded-xl border border-haruto-sea/25 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setAiCareOpen((v) => !v)}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-haruto-sea/5 transition-colors select-none"
+          >
+            <span className="text-haruto-sea shrink-0"><IconChat /></span>
+            <span className="flex-1 text-xs font-medium text-haruto-sea">{aiName} 的关心</span>
+            <span className="text-neutral-400 shrink-0"><IconChevron open={aiCareOpen} /></span>
+          </button>
+          {aiCareOpen && (
+            <div className="px-3 pb-3 pt-1 border-t border-haruto-sea/15">
+              {/* 只读留言区：M6 上线后 AI 的经期关怀留言写在这里；当前为空时显示提示 */}
+              <div className="text-xs italic text-haruto-sea/60 leading-relaxed">
+                他还没有留言
+              </div>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ===== 生理期右键菜单：取消/恢复/删除（仅已标记日期有菜单） ===== */}
+      {periodMenu && (
+        <FloatingMenu
+          x={periodMenu.x}
+          y={periodMenu.y}
+          onClose={() => setPeriodMenu(null)}
+          entries={[
+            {
+              label:
+                periodMenu.kind === 'cancel-start'
+                  ? '取消这次经期记录…'
+                  : periodMenu.kind === 'reopen'
+                    ? '恢复为进行中…'
+                    : '删除该条记录…',
+              danger: periodMenu.kind !== 'reopen',
+              onClick: () => {
+                setPeriodConfirm({ kind: periodMenu.kind, startDate: periodMenu.startDate })
+                setPeriodMenu(null)
+              },
+            },
+          ]}
+        />
+      )}
+
+      {/* ===== 生理期操作确认（居中 modal，Electron 禁 confirm） ===== */}
+      {periodConfirm && (
+        <div
+          className="fixed inset-0 z-[60] grid place-items-center bg-black/30 animate-[fadeSlideIn_.15s_ease]"
+          onMouseDown={(e) => e.target === e.currentTarget && setPeriodConfirm(null)}
+        >
+          <div className="w-72 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-2xl p-5">
+            <div className="text-sm font-semibold select-none">
+              {periodConfirm.kind === 'cancel-start'
+                ? '取消这次经期记录？'
+                : periodConfirm.kind === 'reopen'
+                  ? '恢复为进行中？'
+                  : '该记录已结束，是否删除？'}
+            </div>
+            <div className="mt-1 text-xs text-neutral-400 tabular-nums select-none">
+              开始日 {periodConfirm.startDate}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => {
+                  if (periodConfirm.kind === 'reopen') onPeriodReopen(periodConfirm.startDate)
+                  else onDeletePeriod(periodConfirm.startDate)
+                  setPeriodConfirm(null)
+                }}
+                className={`flex-1 text-xs py-2 rounded-lg font-medium transition-opacity select-none hover:opacity-90 ${
+                  periodConfirm.kind === 'reopen' ? 'bg-haruto-sea text-white' : 'bg-[#d94f6e] text-white'
+                }`}
+              >
+                {periodConfirm.kind === 'cancel-start' ? '确认取消' : periodConfirm.kind === 'reopen' ? '确认恢复' : '确认删除'}
+              </button>
+              <button
+                onClick={() => setPeriodConfirm(null)}
+                className="flex-1 text-xs py-2 rounded-lg border border-neutral-200 dark:border-neutral-600
+                  text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors select-none"
+              >
+                取消
               </button>
             </div>
           </div>
