@@ -3,6 +3,7 @@ export interface Tag {
   name: string
   color: string // 十六进制色，如 #3d7ea6
   isSpecial: boolean // true = 年度OKR/我的愿景，排最前
+  isPinned?: boolean // H1 置顶排最前（可选字段，旧数据无需自愈）
 }
 
 // ===== 四层结构：H1清单(Tag) → H2标签(SubTag) → 看板分组(Section) → 任务(Task) =====
@@ -115,5 +116,6 @@ export interface Db {
     harutoMetDate: string // 首次启动日期，YYYY-MM-DD
     currentCharacterId: string // 当前角色，默认 'haruto'
     skinId: string // 皮肤，默认 'default'
+    aiName: string // AI 角色显示名，默认 'Haruto'（应用名 MyHaruto 不变）
   }
 }
