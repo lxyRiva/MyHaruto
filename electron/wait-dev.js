@@ -2,7 +2,8 @@
 const { spawn } = require('child_process')
 const http = require('http')
 
-const URL_DEV = 'http://127.0.0.1:5173'
+// 用 localhost 而非 127.0.0.1：本机 vite 可能只绑定 IPv6(::1)，写死 IPv4 会永远探测失败
+const URL_DEV = 'http://localhost:5173'
 
 function tryLoad() {
   http
