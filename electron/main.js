@@ -13,13 +13,20 @@ function defaultDb() {
       { id: 'okr', name: '年度OKR', color: '#d4a017', isSpecial: true },
       { id: 'daily', name: '日常', color: '#3d7ea6', isSpecial: false },
     ],
+    subTags: [],
+    sections: [],
     focusSessions: [],
     habits: [],
     habitRecords: [],
     importantDays: [],
     periodRecords: [],
     sleepRecords: [],
-    settings: { theme: 'light' },
+    settings: {
+      theme: 'light',
+      harutoMetDate: new Date().toISOString().slice(0, 10),
+      currentCharacterId: 'haruto',
+      skinId: 'default',
+    },
   }
 }
 
@@ -30,6 +37,18 @@ function loadDb() {
     const defaults = defaultDb()
     for (const key of Object.keys(defaults)) {
       if (db[key] === undefined) db[key] = defaults[key]
+    }
+    // 四层结构自愈：旧数据补齐 H2标签/看板分组/任务新字段/角色设置
+    if (!Array.isArray(db.subTags)) db.subTags = []
+    if (!Array.isArray(db.sections)) db.sections = []
+    if (!db.settings || typeof db.settings !== 'object') db.settings = defaults.settings
+    if (!db.settings.harutoMetDate) db.settings.harutoMetDate = new Date().toISOString().slice(0, 10)
+    if (!db.settings.currentCharacterId) db.settings.currentCharacterId = 'haruto'
+    if (!db.settings.skinId) db.settings.skinId = 'default'
+    for (const t of db.tasks) {
+      if (!Array.isArray(t.checklistItems)) t.checklistItems = []
+      if (!Array.isArray(t.taskComments)) t.taskComments = []
+      if (t.sectionId === undefined) t.sectionId = null
     }
     // 数据自愈：断开父子环 / 悬空父引用（历史测试数据可能成环导致界面白屏）
     const ids = new Set(db.tasks.map((t) => t.id))

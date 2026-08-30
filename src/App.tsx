@@ -52,7 +52,7 @@ function uid() {
 }
 
 export default function App() {
-  const [db, setDb] = useState<Db>({ tasks: [], tags: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light' } })
+  const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default' } })
   const [loaded, setLoaded] = useState(false)
   const [page, setPage] = useState<PageKey>('today')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -82,7 +82,7 @@ export default function App() {
   }, [db.settings.theme])
 
   const toggleTheme = () =>
-    setDb((d) => ({ ...d, settings: { theme: d.settings.theme === 'dark' ? 'light' : 'dark' } }))
+    setDb((d) => ({ ...d, settings: { ...d.settings, theme: d.settings.theme === 'dark' ? 'light' : 'dark' } }))
 
   // ---------- 任务 ----------
   const addTask = (title: string, dueDate: string | null, tagId: string | null) =>
@@ -90,7 +90,8 @@ export default function App() {
       ...d,
       tasks: [
         { id: uid(), title, description: '', dueDate, done: false, createdAt: new Date().toISOString(),
-          tagId, parentTaskId: null, priority: 'none', masterTaskId: null, isPinnedToday: false },
+          tagId, parentTaskId: null, priority: 'none', masterTaskId: null, isPinnedToday: false,
+          sectionId: null, checklistItems: [], taskComments: [] },
         ...d.tasks,
       ],
     }))
@@ -101,7 +102,8 @@ export default function App() {
       tasks: [
         ...d.tasks,
         { id: uid(), title, description: '', dueDate: null, done: false, createdAt: new Date().toISOString(),
-          tagId: d.tasks.find((t) => t.id === parentId)?.tagId ?? null, parentTaskId: parentId, priority: 'none' },
+          tagId: d.tasks.find((t) => t.id === parentId)?.tagId ?? null, parentTaskId: parentId, priority: 'none',
+          sectionId: null, checklistItems: [], taskComments: [] },
       ],
     }))
 
@@ -155,6 +157,9 @@ export default function App() {
         periodRecords: d.periodRecords.map((r) => (!r.endDate && r.startDate < date ? { ...r, endDate: date } : r)),
       }
     })
+
+  const deletePeriod = (startDate: string) =>
+    setDb((d) => ({ ...d, periodRecords: d.periodRecords.filter((p) => p.startDate !== startDate) }))
 
   // ---------- 番茄钟 ----------
   const startPomo = (minutes: number, mode: 'countdown' | 'stopwatch' = 'countdown') => {
@@ -412,6 +417,7 @@ export default function App() {
             onUpdateDay={updateImportantDay}
             onDeleteDay={deleteImportantDay}
             onPeriodMark={markPeriod}
+            onDeletePeriod={deletePeriod}
           />
         ) : (
           <Placeholder label={PLACEHOLDER_PAGE[page] ?? ''} />

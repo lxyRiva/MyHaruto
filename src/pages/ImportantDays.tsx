@@ -207,6 +207,16 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   )
 }
 
+// 生理期小气泡弹窗状态：kind = start(问开始) / end(问结束) / info(仅提示)
+interface PopState {
+  date: string
+  x: number
+  y: number
+  side: 'left' | 'right' // 气泡锚在日期格的哪一侧（决定小箭头位置）
+  kind: 'start' | 'end' | 'info'
+  info?: string // kind=info 时的提示文案
+}
+
 // 编辑表单草稿（回填现有值）
 interface EditDraft {
   title: string
