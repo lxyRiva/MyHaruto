@@ -1,6 +1,6 @@
 // App = 三层结构：L1 图标导航栏 → L2 清单树（任务模块）→ L3 内容区 + 右侧详情
 import { useEffect, useRef, useState } from 'react'
-import type { Db, Task, Tag, SubTag, Habit, ImportantDay } from './types'
+import type { Db, Task, Tag, SubTag, Section, Habit, ImportantDay } from './types'
 import PomodoroBar from './components/PomodoroBar'
 import FloatingMenu from './components/FloatingMenu'
 import BoardView from './components/BoardView'
@@ -87,6 +87,8 @@ export default function App() {
   const [renamingH1, setRenamingH1] = useState<string | null>(null)
   const [subTagModal, setSubTagModal] = useState<{ mode: 'create' | 'edit'; h1TagId: string; subTag?: SubTag } | null>(null)
   const [dissolveConfirm, setDissolveConfirm] = useState<{ tagId: string } | null>(null)
+  // 当前正在重命名的看板 Section（Step 4：左/右插入分组后立即进入重命名）
+  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null)
 
   // 设置弹窗（当前仅 AI 名字）
   const [showSettings, setShowSettings] = useState(false)
@@ -203,6 +205,86 @@ export default function App() {
         subTags: d.subTags.filter((s) => s.id !== id),
         sections: d.sections.filter((s) => !doomedSections.has(s.id)),
         tasks: d.tasks.map((t) => (t.sectionId && doomedSections.has(t.sectionId) ? { ...t, sectionId: null } : t)),
+      }
+    })
+
+  // ---------- 看板 Section（Step 4） ----------
+  // 基础创建：order 缺省排到该 H2 末尾
+  const addSection = (subTagId: string, name: string, order?: number): string => {
+    const id = uid()
+    setDb((d) => {
+      const siblings = d.sections.filter((s) => s.subTagId === subTagId)
+      const maxOrder = siblings.length ? Math.max(...siblings.map((s) => s.order)) : -1
+      const ord = order ?? maxOrder + 1
+      return {
+        ...d,
+        sections: [
+          ...d.sections.map((s) => (s.subTagId === subTagId && s.order >= ord ? { ...s, order: s.order + 1 } : s)),
+          { id, subTagId, name, order: ord },
+        ],
+      }
+    })
+    return id
+  }
+
+  // 在锚点 Section 左/右插入「未命名分组」并立即进入重命名
+  // 左侧：新组 order = 锚点 order，锚点及其右侧全部 +1；右侧：新组 order = 锚点 order+1，其右侧全部 +1
+  const insertSectionNextTo = (anchorId: string, side: 'left' | 'right') => {
+    const id = uid()
+    setDb((d) => {
+      const anchor = d.sections.find((s) => s.id === anchorId)
+      if (!anchor) return d
+      const insertOrder = side === 'left' ? anchor.order : anchor.order + 1
+      return {
+        ...d,
+        sections: [
+          ...d.sections.map((s) =>
+            s.subTagId === anchor.subTagId && s.order >= insertOrder ? { ...s, order: s.order + 1 } : s
+          ),
+          { id, subTagId: anchor.subTagId, name: '未命名分组', order: insertOrder },
+        ],
+      }
+    })
+    setRenamingSectionId(id)
+  }
+
+  const updateSection = (id: string, patch: Partial<Section>) =>
+    setDb((d) => ({ ...d, sections: d.sections.map((s) => (s.id === id ? { ...s, ...patch } : s)) }))
+
+  // 移动 Section 到其他 H2：order 排到目标 H2 的末尾（原 H2 剩余组不重排，允许跳号）
+  const moveSection = (id: string, newSubTagId: string) =>
+    setDb((d) => {
+      const targetSecs = d.sections.filter((s) => s.subTagId === newSubTagId)
+      const nextOrder = targetSecs.length ? Math.max(...targetSecs.map((s) => s.order)) + 1 : 0
+      return {
+        ...d,
+        sections: d.sections.map((s) => (s.id === id ? { ...s, subTagId: newSubTagId, order: nextOrder } : s)),
+      }
+    })
+
+  // 删除 Section 及其下所有任务（连带删除，规格明确）
+  const deleteSection = (id: string) =>
+    setDb((d) => ({
+      ...d,
+      sections: d.sections.filter((s) => s.id !== id),
+      tasks: d.tasks.filter((t) => t.sectionId !== id),
+    }))
+
+  // 在指定 Section 下新建任务：tagId 归属到该 Section 所属 H2 的 h1TagId（游离 H2 归 null）
+  const addTaskToSection = (sectionId: string, title: string) =>
+    setDb((d) => {
+      const sec = d.sections.find((s) => s.id === sectionId)
+      const h1TagId = d.subTags.find((st) => st.id === sec?.subTagId)?.h1TagId || null
+      return {
+        ...d,
+        tasks: [
+          {
+            id: uid(), title, description: '', dueDate: null, done: false, createdAt: new Date().toISOString(),
+            tagId: h1TagId, parentTaskId: null, priority: 'none', masterTaskId: null, isPinnedToday: false,
+            sectionId, checklistItems: [], taskComments: [],
+          },
+          ...d.tasks,
+        ],
       }
     })
 
@@ -339,6 +421,27 @@ export default function App() {
     onPomodoro: (t: Task) => setPomoTarget(t),
     selectedId,
     onSelect: (id: string | null) => setSelectedId(id),
+  }
+
+  // 看板共享 props（视图A/B 共用，Step 4 分组操作 + 新建任务）
+  const boardProps = {
+    subTags: db.subTags,
+    sections: db.sections,
+    tasks: db.tasks,
+    focusSessions: db.focusSessions,
+    tags: db.tags,
+    renamingSectionId,
+    onRequestRename: (id: string) => setRenamingSectionId(id),
+    onRenameCommit: (id: string, name: string) => {
+      if (name) updateSection(id, { name })
+      setRenamingSectionId(null)
+    },
+    onRenameCancel: () => setRenamingSectionId(null),
+    onAddTaskToSection: addTaskToSection,
+    onInsertSection: insertSectionNextTo,
+    onMoveSection: moveSection,
+    onDeleteSection: deleteSection,
+    onCreateSection: (subTagId: string) => setRenamingSectionId(addSection(subTagId, '未命名分组')),
   }
 
   // 专注页任务池：符合条件的主任务 + 它们的全部子任务（子任务可独立计时，问题2）
@@ -597,23 +700,13 @@ export default function App() {
           ) : activeSubTagId ? (
             // 视图B：H2 单标签看板（无右栏）
             <BoardView
-              subTags={db.subTags}
-              sections={db.sections}
-              tasks={db.tasks}
-              focusSessions={db.focusSessions}
+              {...boardProps}
               h1TagId={db.subTags.find((s) => s.id === activeSubTagId)?.h1TagId ?? null}
               activeSubTagId={activeSubTagId}
             />
           ) : activeListId !== 'all' && activeListId !== 'today' && tagMap.has(activeListId) ? (
             // 视图A：H1 总览看板（该 H1 下所有 H2 平铺，无右栏）；'all'/'today' 保留原任务列表
-            <BoardView
-              subTags={db.subTags}
-              sections={db.sections}
-              tasks={db.tasks}
-              focusSessions={db.focusSessions}
-              h1TagId={activeListId}
-              activeSubTagId={null}
-            />
+            <BoardView {...boardProps} h1TagId={activeListId} activeSubTagId={null} />
           ) : (
             <Tasks {...taskProps} activeListId={activeListId} />
           )
