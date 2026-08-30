@@ -1,6 +1,6 @@
 // App = 三层结构：L1 图标导航栏 → L2 清单树（任务模块）→ L3 内容区 + 右侧详情
 import { useEffect, useRef, useState } from 'react'
-import type { Db, Task, Tag, SubTag, Section, Habit, ImportantDay } from './types'
+import type { Db, Task, Tag, SubTag, Section, ChecklistItem, Habit, ImportantDay } from './types'
 import PomodoroBar from './components/PomodoroBar'
 import FloatingMenu from './components/FloatingMenu'
 import BoardView from './components/BoardView'
@@ -150,6 +150,23 @@ export default function App() {
   const deleteTask = (id: string) =>
     setDb((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id && t.parentTaskId !== id) }))
 
+  // 看板右键删除：递归删除目标 + 全部子孙（修正2）
+  const deleteTaskRecursive = (id: string) =>
+    setDb((d) => {
+      const ids = new Set<string>([id])
+      let grew = true
+      while (grew) {
+        grew = false
+        for (const t of d.tasks) {
+          if (t.parentTaskId && ids.has(t.parentTaskId) && !ids.has(t.id)) {
+            ids.add(t.id)
+            grew = true
+          }
+        }
+      }
+      return { ...d, tasks: d.tasks.filter((t) => !ids.has(t.id)) }
+    })
+
   // ---------- 清单（H1）与标签（H2） ----------
   const addTag = (name: string, color: string) =>
     setDb((d) => ({ ...d, tags: [...d.tags, { id: uid(), name, color, isSpecial: false }] }))
@@ -287,6 +304,110 @@ export default function App() {
         ],
       }
     })
+
+  // ---------- 看板任务卡片（Step 5） ----------
+  // 勾选完成只变灰原位不动；取消完成时清掉聚合标记（下次完成从原位开始，聚合是显式动作）
+  const toggleTaskDone = (id: string) =>
+    setDb((d) => ({
+      ...d,
+      tasks: d.tasks.map((t) =>
+        t.id === id ? { ...t, done: !t.done, ...(t.done ? { aggregated: false } : {}) } : t
+      ),
+    }))
+
+  // 聚合：把该 Section 下所有 done=true 的任务标记进「已完成」折叠区（数据标记，渲染层按此分区）
+  const aggregateSectionDone = (sectionId: string) =>
+    setDb((d) => ({
+      ...d,
+      tasks: d.tasks.map((t) => (t.sectionId === sectionId && t.done ? { ...t, aggregated: true } : t)),
+    }))
+
+  // 看板内加子任务：sectionId/tagId 继承父任务
+  const addSubtaskInline = (parentId: string, title: string) =>
+    setDb((d) => {
+      const p = d.tasks.find((t) => t.id === parentId)
+      return {
+        ...d,
+        tasks: [
+          ...d.tasks,
+          {
+            id: uid(), title, description: '', dueDate: null, done: false, createdAt: new Date().toISOString(),
+            tagId: p?.tagId ?? null, parentTaskId: parentId, priority: 'none', masterTaskId: null, isPinnedToday: false,
+            sectionId: p?.sectionId ?? null, checklistItems: [], taskComments: [],
+          },
+        ],
+      }
+    })
+
+  const updateTaskTag = (id: string, tagId: string | null) => updateTask(id, { tagId })
+
+  // 移动任务到其他 Section：目标任务 + 全部子孙的 sectionId 一并更新，tagId 同步为目标 Section 所属 H1
+  const updateTaskSection = (id: string, sectionId: string | null) =>
+    setDb((d) => {
+      if (!d.tasks.some((t) => t.id === id)) return d
+      const ids = new Set<string>([id])
+      let grew = true
+      while (grew) {
+        grew = false
+        for (const t of d.tasks) {
+          if (t.parentTaskId && ids.has(t.parentTaskId) && !ids.has(t.id)) {
+            ids.add(t.id)
+            grew = true
+          }
+        }
+      }
+      const h1TagId = d.subTags.find((st) => st.id === d.sections.find((s) => s.id === sectionId)?.subTagId)?.h1TagId || null
+      return {
+        ...d,
+        tasks: d.tasks.map((t) => (ids.has(t.id) ? { ...t, sectionId, tagId: sectionId ? h1TagId : null } : t)),
+      }
+    })
+  const togglePinnedToday = (id: string) =>
+    setDb((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, isPinnedToday: !t.isPinnedToday } : t)) }))
+  const setTaskPriority = (id: string, priority: NonNullable<Task['priority']>) => updateTask(id, { priority })
+  const toggleChecklistItem = (taskId: string, itemId: string) =>
+    setDb((d) => ({
+      ...d,
+      tasks: d.tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, checklistItems: t.checklistItems.map((c) => (c.id === itemId ? { ...c, done: !c.done } : c)) }
+          : t
+      ),
+    }))
+
+  // 检查事项 CRUD（Step 5a 悬空弹窗）
+  const addChecklistItem = (taskId: string, text: string) =>
+    setDb((d) => ({
+      ...d,
+      tasks: d.tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, checklistItems: [...t.checklistItems, { id: uid(), text, done: false, remindAt: null }] }
+          : t
+      ),
+    }))
+
+  const updateChecklistItem = (taskId: string, itemId: string, patch: Partial<ChecklistItem>) =>
+    setDb((d) => ({
+      ...d,
+      tasks: d.tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, checklistItems: t.checklistItems.map((c) => (c.id === itemId ? { ...c, ...patch } : c)) }
+          : t
+      ),
+    }))
+
+  const deleteChecklistItem = (taskId: string, itemId: string) =>
+    setDb((d) => ({
+      ...d,
+      tasks: d.tasks.map((t) =>
+        t.id === taskId ? { ...t, checklistItems: t.checklistItems.filter((c) => c.id !== itemId) } : t
+      ),
+    }))
+
+  // 任务级提醒（日期选择器「让 ta 提醒」）：remindAt = 提醒时刻 ISO，remindDaysBefore = 提前天数（0=当天）
+  const setTaskReminder = (id: string, remindAt: string | null, remindDaysBefore: number | null) =>
+    updateTask(id, { remindAt, remindDaysBefore })
+  const updateTaskDue = (id: string, dueDate: string | null) => updateTask(id, { dueDate })
 
   // ---------- 习惯 ----------
   const addHabit = (name: string, icon: string) =>
@@ -442,6 +563,23 @@ export default function App() {
     onMoveSection: moveSection,
     onDeleteSection: deleteSection,
     onCreateSection: (subTagId: string) => setRenamingSectionId(addSection(subTagId, '未命名分组')),
+    onAggregateDone: aggregateSectionDone,
+    // Step 5 任务卡片交互
+    aiName,
+    onToggleDone: toggleTaskDone,
+    onToggleChecklist: toggleChecklistItem,
+    onAddChecklistItem: addChecklistItem,
+    onUpdateChecklistItem: updateChecklistItem,
+    onDeleteChecklistItem: deleteChecklistItem,
+    onSetTaskReminder: setTaskReminder,
+    onUpdateTaskDue: updateTaskDue,
+    onAddSubtask: addSubtaskInline,
+    onUpdateTag: updateTaskTag,
+    onUpdateTaskSection: updateTaskSection,
+    onTogglePinned: togglePinnedToday,
+    onSetPriority: setTaskPriority,
+    onPomodoro: (t: Task) => setPomoTarget(t),
+    onDeleteTaskRecursive: deleteTaskRecursive,
   }
 
   // 专注页任务池：符合条件的主任务 + 它们的全部子任务（子任务可独立计时，问题2）
@@ -458,7 +596,7 @@ export default function App() {
       .filter((s) => s.h1TagId === h1TagId)
       .sort((a, b) => (a.isPinned === b.isPinned ? a.order - b.order : a.isPinned ? -1 : 1))
 
-  // H2 行（无左内边距：由外层缩进容器统一提供 28px + 竖线）
+  // H2 行（无左内边距：由外层缩进容器统一提供 28px + 竖线）；色点在行最右（修正6：H2 持有颜色标识，H1 不再显示色点）
   const renderSubTagRow = (st: SubTag) => (
     <button
       key={st.id}
@@ -472,12 +610,9 @@ export default function App() {
           ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
           : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
     >
-      {st.emoji ? (
-        <span className="text-xs shrink-0">{st.emoji}</span>
-      ) : (
-        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
-      )}
+      {st.emoji && <span className="text-xs shrink-0">{st.emoji}</span>}
       <span className="truncate">{st.name}</span>
+      <span className="ml-auto mr-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: st.color }} />
     </button>
   )
 
@@ -521,7 +656,6 @@ export default function App() {
                 : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
           >
             <span className="shrink-0 text-neutral-400"><IconChevron open={expanded} /></span>
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
             <span className="truncate flex-1">{t.name}</span>
             {/* H2 标签数量（无 H2 时不显示，避免无意义的 0） */}
             {subs.length > 0 && (
@@ -727,6 +861,8 @@ export default function App() {
           <Calendar
             tasks={db.tasks}
             tags={db.tags}
+            subTags={db.subTags}
+            sections={db.sections}
             onToggleTask={(id, done) => updateTask(id, { done })}
             onAddTask={(title, date) => addTask(title, date, null)}
           />

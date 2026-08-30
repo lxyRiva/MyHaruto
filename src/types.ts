@@ -30,6 +30,7 @@ export interface ChecklistItem {
   id: string
   text: string
   done: boolean
+  remindAt?: string | null // 提醒时刻 ISO（可选字段，旧数据 undefined 当 null；M5 接 AI 后生效，现仅保存+标记）
 }
 
 export interface TaskComment {
@@ -54,6 +55,9 @@ export interface Task {
   sectionId: string | null // 所属看板分组（H2 下的 Section），新建任务必选
   checklistItems: ChecklistItem[] // 检查事项
   taskComments: TaskComment[] // AI留言/用户评论
+  aggregated?: boolean // 看板语义：已勾选完成且被用户「聚合」进折叠区（勾选本身不移动任务位置；可选字段旧数据无需自愈）
+  remindAt?: string | null // 任务提醒时刻 ISO（可选字段，旧数据 undefined 当 null；M5 接 AI 后生效）
+  remindDaysBefore?: number | null // 提前提醒天数（0=当天）
 }
 
 export interface FocusSession {

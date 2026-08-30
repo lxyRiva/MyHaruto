@@ -14,7 +14,10 @@
 //    b) 旧版 tasksOn 只过滤主任务（!t.parentTaskId），子任务即使有日期也被隐藏 ——
 //       现改为显示全部任务，子任务条目前加「└ 」前缀。
 import { useState } from 'react'
-import type { Task, Tag } from '../types'
+import type { Section, SubTag, Task, Tag } from '../types'
+
+// 优先级色点颜色（修正4：高红/中橙/低蓝/无不显示）
+const PRIO_DOT: Record<string, string | null> = { high: '#ef4444', mid: '#f59e0b', low: '#3b82f6', none: null }
 
 function fmtDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -23,10 +26,12 @@ function fmtDate(d: Date) {
 const WEEK = ['日', '一', '二', '三', '四', '五', '六']
 
 export default function Calendar({
-  tasks, tags, onToggleTask, onAddTask,
+  tasks, tags, subTags, sections, onToggleTask, onAddTask,
 }: {
   tasks: Task[] // App 传入 db.tasks 全量（含子任务），本页自行按日期匹配
   tags: Tag[]
+  subTags: SubTag[]
+  sections: Section[]
   onToggleTask: (id: string, done: boolean) => void
   onAddTask: (title: string, date: string) => void
 }) {
@@ -48,6 +53,21 @@ export default function Calendar({
   const WEEK_MON = ['一', '二', '三', '四', '五', '六', '日']
 
   const tagMap = new Map(tags.map((t) => [t.id, t]))
+
+  // 修正5：任务颜色跟随所属 H2（sectionId → Section → SubTag.color），无分组回退 H1 颜色/灰
+  const colorOf = (t: Task) => {
+    if (t.sectionId) {
+      const sec = sections.find((s) => s.id === t.sectionId)
+      const st = sec && subTags.find((x) => x.id === sec.subTagId)
+      if (st) return st.color
+    }
+    return (t.tagId && tagMap.get(t.tagId)?.color) || '#6b7280'
+  }
+  // 修正4：优先级色点（高红/中橙/低蓝/无不显示）
+  const PrioDot = ({ t }: { t: Task }) => {
+    const c = PRIO_DOT[t.priority ?? 'none']
+    return c ? <span className="mr-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: c }} /> : null
+  }
 
   // 生成 6×7=42 个格子（从当月第一天所在周的周日开始）
   // 修复说明：直接用「1 - 首行偏移 + i」让 Date 构造器自行跨月，
@@ -151,10 +171,11 @@ export default function Calendar({
                       <div
                         key={t.id}
                         title={(t.parentTaskId ? '└ ' : '') + t.title}
-                        className={`text-[11px] px-1.5 py-1 rounded truncate text-white ${t.done ? 'line-through opacity-50' : ''}`}
-                        style={{ backgroundColor: t.tagId ? tagMap.get(t.tagId)?.color ?? '#6b7280' : '#6b7280' }}
+                        className={`flex items-center text-[11px] px-1.5 py-1 rounded text-white ${t.done ? 'line-through opacity-50' : ''}`}
+                        style={{ backgroundColor: colorOf(t) }}
                       >
-                        {t.parentTaskId ? '└ ' : ''}{t.title}
+                        <PrioDot t={t} />
+                        <span className="truncate">{t.parentTaskId ? '└ ' : ''}{t.title}</span>
                       </div>
                     ))}
                   </div>
@@ -196,12 +217,12 @@ export default function Calendar({
                 {dayTasks.map((t) => (
                   <div
                     key={t.id}
-                    className="text-[11px] px-1.5 py-0.5 rounded mb-0.5 truncate text-white cursor-pointer hover:opacity-80 transition-opacity"
-                    style={{ backgroundColor: t.tagId ? tagMap.get(t.tagId)?.color ?? '#6b7280' : '#6b7280', opacity: t.done ? 0.45 : 1 }}
+                    className="mb-0.5 flex items-center rounded px-1.5 py-0.5 text-[11px] text-white opacity-100 cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: colorOf(t), ...(t.done ? { opacity: 0.45 } : {}) }}
                     title={(t.parentTaskId ? '└ ' : '') + t.title}
                   >
-                    {/* 子任务条目前加「└ 」前缀，与任务列表页的层级视觉一致 */}
-                    {t.parentTaskId ? '└ ' : ''}{t.title}
+                    <PrioDot t={t} />
+                    <span className="truncate">{t.parentTaskId ? '└ ' : ''}{t.title}</span>
                   </div>
                 ))}
               </div>
@@ -231,7 +252,7 @@ export default function Calendar({
                   className="accent-haruto-sea w-4 h-4"
                 />
                 <span className={`text-sm ${t.done ? 'line-through text-neutral-400' : ''}`}>
-                  <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: t.tagId ? tagMap.get(t.tagId)?.color ?? '#6b7280' : '#6b7280' }} />
+                  <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ backgroundColor: colorOf(t) }} />
                   {/* 子任务在速览里同样带「└ 」前缀 */}
                   {t.parentTaskId ? '└ ' : ''}{t.title}
                 </span>

@@ -1,8 +1,8 @@
 // 通用右键浮层菜单（支持二级子菜单：hover 右侧展开 + › 箭头）
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export interface MenuEntry {
-  label: string
+  label: ReactNode // 支持字符串或带色点/✓标记的 JSX（如优先级子菜单）
   onClick?: () => void
   danger?: boolean
   header?: boolean // 分组标题，不可点击
