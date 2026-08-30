@@ -55,6 +55,9 @@ const pad2 = (n: number): string => String(n).padStart(2, '0');
 const toISODate = (d: Date): string =>
   `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
+/** ISO 时间字符串 → 本地 'YYYY-MM-DD'（直接 slice 是 UTC 日期，0-8 点的记录会算到前一天） */
+const localDateOf = (iso: string): string => toISODate(new Date(iso));
+
 /** Date → 'YYYY-MM' */
 const toISOMonth = (d: Date): string => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 
@@ -159,7 +162,7 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
   /** 当前视图范围内的专注记录（统计口径：startedAt 的日期部分归属当天） */
   const periodSessions = useMemo(() => {
     return focusSessions.filter((s) => {
-      const day = s.startedAt.slice(0, 10);
+      const day = localDateOf(s.startedAt);
       if (viewMode === 'day') return day === todayStr;
       if (viewMode === 'month') return day.slice(0, 7) === monthStr;
       return day.slice(0, 4) === yearStr; // 年视图
@@ -195,7 +198,7 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
   const yearMinutesByDay = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of focusSessions) {
-      const day = s.startedAt.slice(0, 10);
+      const day = localDateOf(s.startedAt);
       if (day.slice(0, 4) !== yearStr) continue; // 仅统计今年
       map.set(day, (map.get(day) ?? 0) + s.minutes);
     }

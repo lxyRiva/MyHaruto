@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 全局字体缩小 5%：根字号 16px → 15.2px，rem 单位的字号/间距等比缩小
+   （14px 正文 → 13.3px，与需求示例一致） */
+html {
+  font-size: 15.2px;
+}
+
 html,
 body,
 #root {
@@ -12,6 +18,8 @@ body {
   @apply bg-[#fafaf9] text-neutral-800 dark:bg-[#1e1e1e] dark:text-neutral-100 font-sans antialiased;
 }
 
+/* ========== 主题过渡动效（视觉签名，勿删勿改）========== */
+/* 用户明确要求保护此效果，未来任何 UI 重构必须保留。详见 docs/VISUAL_EFFECTS.md */
 /* 主题切换渐变（SPEC §8 微动效清单） */
 * {
   transition:
