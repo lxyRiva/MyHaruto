@@ -1,8 +1,10 @@
 // App = 三层结构：L1 图标导航栏 → L2 清单树（任务模块）→ L3 内容区 + 右侧详情
 import { useEffect, useRef, useState } from 'react'
-import type { Db, Task, Tag, Habit, ImportantDay } from './types'
+import type { Db, Task, Tag, SubTag, Habit, ImportantDay } from './types'
 import PomodoroBar from './components/PomodoroBar'
-import { IconTasks, IconTimer, IconCalendar, IconCheck, IconChart, IconHeart, IconFilm, IconPlane, IconChat, IconTown, IconSun, IconMoon } from './components/icons'
+import FloatingMenu from './components/FloatingMenu'
+import BoardView from './components/BoardView'
+import { IconTasks, IconTimer, IconCalendar, IconCheck, IconChart, IconHeart, IconFilm, IconPlane, IconChat, IconTown, IconSun, IconMoon, IconClock, IconChevron, IconSettings } from './components/icons'
 import Today from './pages/Today'
 import Tasks from './pages/Tasks'
 import Calendar from './pages/Calendar'
@@ -25,15 +27,25 @@ const NAV: { key: PageKey; icon: () => JSX.Element; label: string; soon?: string
   { key: 'important', icon: IconHeart, label: '重要日' },
   { key: 'album', icon: IconFilm, label: '书影清单', soon: 'V2' },
   { key: 'travel', icon: IconPlane, label: '旅游札记', soon: 'V2' },
-  { key: 'chat', icon: IconChat, label: 'Haruto', soon: 'M5' },
+  { key: 'chat', icon: IconChat, label: 'AI 伙伴', soon: 'M5' }, // 悬浮标题动态显示 db.settings.aiName
   { key: 'town', icon: IconTown, label: '小镇', soon: 'V3' },
 ]
 
 const PLACEHOLDER_PAGE: Partial<Record<PageKey, string>> = {
-  album: '书影清单', travel: '旅游札记', chat: 'Haruto 聊天', town: '小镇',
+  album: '书影清单', travel: '旅游札记', town: '小镇', // chat 占位文案动态用 db.settings.aiName
 }
 
 const PALETTE = ['#3d7ea6', '#5b8c5a', '#c97b4a', '#8e6bb3', '#b85c5c', '#4a9e9e']
+
+// H2 标签 18 色板（新建/编辑标签 modal 用）
+const H2_PALETTE = [
+  '#3d7ea6', '#5b8c5a', '#c97b4a', '#8e6bb3', '#b85c5c', '#4a9e9e',
+  '#d4a017', '#e07a5f', '#6a994e', '#7a6ff0', '#f2a900', '#00a3a3',
+  '#e56db1', '#5c7cfa', '#8d6e63', '#607d8b', '#c2185b', '#7cb342',
+]
+
+// H2 标签 emoji 预设（用户数据，允许 emoji；点击填入输入框，也可手动输入自定义）
+const EMOJI_PRESETS = ['📝', '📞', '💻', '📊', '📚', '🎯', '🧘‍♀️', '💪', '🛒', '✈️', '🎨', '🏠']
 
 interface Pomo {
   taskId: string
@@ -52,7 +64,7 @@ function uid() {
 }
 
 export default function App() {
-  const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default' } })
+  const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default', aiName: 'Haruto' } })
   const [loaded, setLoaded] = useState(false)
   const [page, setPage] = useState<PageKey>('today')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -66,6 +78,20 @@ export default function App() {
   const [newListName, setNewListName] = useState('')
   const [newListColor, setNewListColor] = useState(PALETTE[0])
 
+  // ----- L2 两层树（H1清单 → H2标签） -----
+  const [expandedH1s, setExpandedH1s] = useState<Set<string> | null>(null) // null = 默认全部展开
+  const [activeSubTagId, setActiveSubTagId] = useState<string | null>(null) // 当前选中 H2，null = H1 总览/固定入口
+  // H1 三点菜单 / H2 右键菜单 / H1 行内重命名 / H2 新建编辑 modal / 解散确认
+  const [h1Menu, setH1Menu] = useState<{ tagId: string; x: number; y: number } | null>(null)
+  const [subTagMenu, setSubTagMenu] = useState<{ subTagId: string; x: number; y: number } | null>(null)
+  const [renamingH1, setRenamingH1] = useState<string | null>(null)
+  const [subTagModal, setSubTagModal] = useState<{ mode: 'create' | 'edit'; h1TagId: string; subTag?: SubTag } | null>(null)
+  const [dissolveConfirm, setDissolveConfirm] = useState<{ tagId: string } | null>(null)
+
+  // 设置弹窗（当前仅 AI 名字）
+  const [showSettings, setShowSettings] = useState(false)
+  const [aiNameDraft, setAiNameDraft] = useState('')
+
   useEffect(() => {
     window.myharuto.getDb().then((d) => {
       setDb(d)
@@ -77,12 +103,21 @@ export default function App() {
     if (loaded) window.myharuto.saveDb(db)
   }, [db, loaded])
 
+  // 【视觉签名】主题切换颜色过渡依赖 styles.css 的 * transition 规则，不要移除
   useEffect(() => {
     document.documentElement.classList.toggle('dark', db.settings.theme === 'dark')
   }, [db.settings.theme])
 
   const toggleTheme = () =>
     setDb((d) => ({ ...d, settings: { ...d.settings, theme: d.settings.theme === 'dark' ? 'light' : 'dark' } }))
+
+  // 保存设置弹窗（写入后由 db useEffect 自动持久化；aiName 全局显示处实时生效）
+  const saveSettings = () => {
+    const v = aiNameDraft.trim()
+    if (!v) return
+    setDb((d) => ({ ...d, settings: { ...d.settings, aiName: v } }))
+    setShowSettings(false)
+  }
 
   // ---------- 任务 ----------
   const addTask = (title: string, dueDate: string | null, tagId: string | null) =>
@@ -113,9 +148,63 @@ export default function App() {
   const deleteTask = (id: string) =>
     setDb((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id && t.parentTaskId !== id) }))
 
-  // ---------- 清单（标签） ----------
+  // ---------- 清单（H1）与标签（H2） ----------
   const addTag = (name: string, color: string) =>
     setDb((d) => ({ ...d, tags: [...d.tags, { id: uid(), name, color, isSpecial: false }] }))
+
+  const updateTag = (id: string, patch: Partial<Tag>) =>
+    setDb((d) => ({ ...d, tags: d.tags.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+
+  // 解散 H1：其下所有 H2 变游离（h1TagId=''），H1 本身删除
+  const dissolveH1 = (tagId: string) =>
+    setDb((d) => ({
+      ...d,
+      subTags: d.subTags.map((s) => (s.h1TagId === tagId ? { ...s, h1TagId: '' } : s)),
+      tags: d.tags.filter((t) => t.id !== tagId),
+    }))
+
+  const toggleH1Expand = (tagId: string) =>
+    setExpandedH1s((prev) => {
+      const cur = prev ?? new Set(db.tags.map((t) => t.id)) // 首次操作时物化"全展开"
+      const next = new Set(cur)
+      if (next.has(tagId)) next.delete(tagId)
+      else next.add(tagId)
+      return next
+    })
+
+  const selectSubTag = (subTagId: string) => {
+    setActiveSubTagId(subTagId)
+    setPage('tasks')
+  }
+
+  // ---------- H2 标签 ----------
+  const addSubTag = (h1TagId: string, name: string, emoji: string, color: string) =>
+    setDb((d) => ({
+      ...d,
+      subTags: [
+        ...d.subTags,
+        {
+          id: uid(), h1TagId, name, emoji, color,
+          isPinned: false, sharedWithAI: false,
+          order: d.subTags.filter((s) => s.h1TagId === h1TagId).length, // 排在末尾
+        },
+      ],
+    }))
+
+  const updateSubTag = (id: string, patch: Partial<SubTag>) =>
+    setDb((d) => ({ ...d, subTags: d.subTags.map((s) => (s.id === id ? { ...s, ...patch } : s)) }))
+
+  // 删除 H2：连带其下所有 Section；这些 Section 里的任务 sectionId 归 null（任务不删）
+  const deleteSubTag = (id: string) =>
+    setDb((d) => {
+      const doomedSections = new Set(d.sections.filter((s) => s.subTagId === id).map((s) => s.id))
+      return {
+        ...d,
+        subTags: d.subTags.filter((s) => s.id !== id),
+        sections: d.sections.filter((s) => !doomedSections.has(s.id)),
+        tasks: d.tasks.map((t) => (t.sectionId && doomedSections.has(t.sectionId) ? { ...t, sectionId: null } : t)),
+      }
+    })
 
   // ---------- 习惯 ----------
   const addHabit = (name: string, icon: string) =>
@@ -160,6 +249,13 @@ export default function App() {
 
   const deletePeriod = (startDate: string) =>
     setDb((d) => ({ ...d, periodRecords: d.periodRecords.filter((p) => p.startDate !== startDate) }))
+
+  // 恢复一条已结束的经期记录为进行中（endDate 置 null；生理期右键「恢复」用）
+  const reopenPeriod = (startDate: string) =>
+    setDb((d) => ({
+      ...d,
+      periodRecords: d.periodRecords.map((p) => (p.startDate === startDate ? { ...p, endDate: null } : p)),
+    }))
 
   // ---------- 番茄钟 ----------
   const startPomo = (minutes: number, mode: 'countdown' | 'stopwatch' = 'countdown') => {
@@ -209,11 +305,21 @@ export default function App() {
   }
 
   // ---------- 派生 ----------
+  // AI 显示名兜底：旧库（主进程未重启自愈时）可能还没有 aiName 字段
+  const aiName = db.settings.aiName || 'Haruto'
   const selected = db.tasks.find((t) => t.id === selectedId) ?? null
   const selectedChildren = selected ? db.tasks.filter((t) => t.parentTaskId === selected.id) : []
   const tagMap = new Map(db.tags.map((t) => [t.id, t]))
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const todaySessions = db.focusSessions.filter((s) => s.startedAt.slice(0, 10) === todayStr)
+  // 本地日期（不能用 toISOString：那是 UTC 日期，北京时间 0-8 点会比本地早一天，
+  // 曾导致"今日到期任务进不了专注池"的时区 bug）
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  // 专注记录的 startedAt 是 ISO(UTC)，也换算到本地日期再比对
+  const localDateOf = (iso: string) => {
+    const d = new Date(iso)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const todaySessions = db.focusSessions.filter((s) => localDateOf(s.startedAt) === todayStr)
   const todayMinutes = todaySessions.reduce((sum, s) => sum + s.minutes, 0)
   const mainTasks = db.tasks.filter((t) => !t.parentTaskId)
   const specialTags = db.tags.filter((t) => t.isSpecial)
@@ -243,22 +349,101 @@ export default function App() {
     (t) => !t.done && (focusMainIds.has(t.id) || (t.parentTaskId && focusMainIds.has(t.parentTaskId)))
   )
 
-  // L2 清单树行
-  const ListRow = ({ id, icon, label, color }: { id: string; icon?: string; label: string; color?: string }) => (
+  // L2 两层树渲染：H1 行（三角+色点+名称+计数+三点）/ H2 行（缩进22px+emoji+名称）
+  const sortedSubTagsOf = (h1TagId: string) =>
+    db.subTags
+      .filter((s) => s.h1TagId === h1TagId)
+      .sort((a, b) => (a.isPinned === b.isPinned ? a.order - b.order : a.isPinned ? -1 : 1))
+
+  // H2 行（无左内边距：由外层缩进容器统一提供 28px + 竖线）
+  const renderSubTagRow = (st: SubTag) => (
     <button
-      onClick={() => { setActiveListId(id); setPage('tasks') }}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
-        ${activeListId === id && page === 'tasks'
+      key={st.id}
+      onClick={() => selectSubTag(st.id)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setSubTagMenu({ subTagId: st.id, x: e.clientX, y: e.clientY })
+      }}
+      className={`w-full flex items-center gap-1.5 pr-2 py-1.5 rounded-lg text-[13px]
+        ${activeSubTagId === st.id && page === 'tasks'
           ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
           : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
     >
-      {color
-        ? <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-        : <span className="w-4 text-center text-xs shrink-0">{icon}</span>}
-      <span className="truncate">{label}</span>
-      <span className="ml-auto text-[10px] text-neutral-400 tabular-nums">{countOf(id)}</span>
+      {st.emoji ? (
+        <span className="text-xs shrink-0">{st.emoji}</span>
+      ) : (
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
+      )}
+      <span className="truncate">{st.name}</span>
     </button>
   )
+
+  // H2 列表容器：缩进 28px（13px 外距 + 15px 内距），浅色竖线分隔视觉层级
+  const subTagIndentCls =
+    'ml-[13px] pl-[15px] border-l border-neutral-200/70 dark:border-neutral-700/60 space-y-0.5'
+
+  const renderH1 = (t: Tag) => {
+    const expanded = expandedH1s === null || expandedH1s.has(t.id)
+    const isActive = activeListId === t.id && page === 'tasks' && !activeSubTagId
+    const subs = sortedSubTagsOf(t.id)
+    return (
+      <div key={t.id}>
+        {renamingH1 === t.id ? (
+          <input
+            autoFocus
+            defaultValue={t.name}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={() => setRenamingH1(null)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                updateTag(t.id, { name: e.currentTarget.value.trim() })
+                setRenamingH1(null)
+              }
+              if (e.key === 'Escape') setRenamingH1(null)
+            }}
+            className="w-full text-sm rounded-lg border border-haruto-sea
+              bg-white dark:bg-neutral-900 px-2 py-1.5 outline-none"
+          />
+        ) : (
+          <div
+            onClick={() => {
+              toggleH1Expand(t.id)
+              setActiveListId(t.id)
+              setActiveSubTagId(null)
+              setPage('tasks')
+            }}
+            className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm cursor-pointer select-none
+              ${isActive
+                ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
+                : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+          >
+            <span className="shrink-0 text-neutral-400"><IconChevron open={expanded} /></span>
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+            <span className="truncate flex-1">{t.name}</span>
+            {/* H2 标签数量（无 H2 时不显示，避免无意义的 0） */}
+            {subs.length > 0 && (
+              <span className="text-[10px] text-neutral-400 tabular-nums">{subs.length}</span>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setH1Menu({ tagId: t.id, x: e.clientX, y: e.clientY })
+              }}
+              title="清单操作"
+              className="px-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 leading-none"
+            >
+              ⋯
+            </button>
+          </div>
+        )}
+        {expanded && <div className={subTagIndentCls}>{subs.map(renderSubTagRow)}</div>}
+      </div>
+    )
+  }
+
+  // 置顶的 H1 排前面（组内其余保持原顺序）
+  const byPinned = (a: Tag, b: Tag) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
+  const ungroupedSubTags = sortedSubTagsOf('')
 
   return (
     <div className="flex h-full">
@@ -278,7 +463,7 @@ export default function App() {
               key={n.key}
               onClick={() => !disabled && setPage(n.key)}
               disabled={disabled}
-              title={n.label}
+              title={n.key === 'chat' ? aiName : n.label}
               className={`w-10 h-10 grid place-items-center rounded-xl transition-all
                 ${active
                   ? 'bg-haruto-sea/15 text-haruto-sea'
@@ -291,6 +476,13 @@ export default function App() {
           )
         })}
         <div className="flex-1" />
+        <button
+          onClick={() => { setAiNameDraft(aiName); setShowSettings(true) }}
+          title="设置"
+          className="w-10 h-10 grid place-items-center rounded-xl text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-black/5 dark:hover:bg-white/10"
+        >
+          <IconSettings />
+        </button>
         <button
           onClick={toggleTheme}
           title={db.settings.theme === 'dark' ? '切换日间模式' : '切换夜间模式'}
@@ -305,8 +497,9 @@ export default function App() {
         <aside className="w-52 shrink-0 flex flex-col border-r border-neutral-200 dark:border-neutral-800 bg-[#fafaf9] dark:bg-[#181818] py-4">
           <div className="px-3 text-xs font-bold text-neutral-400 tracking-widest mb-2">清单</div>
           <nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
+            {/* 固定入口：今天 / 最近7天 / 全部 */}
             <button
-              onClick={() => setPage('today')}
+              onClick={() => { setPage('today'); setActiveListId('today'); setActiveSubTagId(null) }}
               className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
                 ${page === 'today'
                   ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
@@ -316,17 +509,39 @@ export default function App() {
               <span>今天</span>
               <span className="ml-auto text-[10px] text-neutral-400 tabular-nums">{countOf('today')}</span>
             </button>
-            <ListRow id="all" icon="🗂" label="全部" />
+            <button
+              onClick={() => { setActiveListId('recent7'); setActiveSubTagId(null); setPage('tasks') }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+                ${activeListId === 'recent7' && page === 'tasks' && !activeSubTagId
+                  ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
+                  : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+            >
+              <IconClock />
+              <span>最近7天</span>
+            </button>
+            <button
+              onClick={() => { setActiveListId('all'); setActiveSubTagId(null); setPage('tasks') }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+                ${activeListId === 'all' && page === 'tasks' && !activeSubTagId
+                  ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
+                  : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+            >
+              <IconTasks />
+              <span>全部</span>
+              <span className="ml-auto text-[10px] text-neutral-400 tabular-nums">{countOf('all')}</span>
+            </button>
             {specialTags.length > 0 && (
               <div className="pt-2 pb-0.5 px-3 text-[10px] font-medium text-neutral-400 tracking-wide">我的愿景</div>
             )}
-            {specialTags.map((t) => (
-              <ListRow key={t.id} label={t.name} color={t.color} id={t.id} />
-            ))}
+            {[...specialTags].sort(byPinned).map(renderH1)}
             <div className="pt-2 pb-0.5 px-3 text-[10px] font-medium text-neutral-400 tracking-wide">清单</div>
-            {normalTags.map((t) => (
-              <ListRow key={t.id} label={t.name} color={t.color} id={t.id} />
-            ))}
+            {[...normalTags].sort(byPinned).map(renderH1)}
+            {ungroupedSubTags.length > 0 && (
+              <>
+                <div className="pt-2 pb-0.5 px-3 text-[10px] font-medium text-neutral-400 tracking-wide">未分组</div>
+                <div className={subTagIndentCls}>{ungroupedSubTags.map(renderSubTagRow)}</div>
+              </>
+            )}
             {addingList ? (
               <div className="px-1 pt-1">
                 <input
@@ -377,7 +592,31 @@ export default function App() {
         ) : page === 'today' ? (
           <Today {...taskProps} />
         ) : page === 'tasks' ? (
-          <Tasks {...taskProps} activeListId={activeListId} />
+          activeListId === 'recent7' ? (
+            <div className="h-full grid place-items-center text-neutral-400">最近7天功能开发中</div>
+          ) : activeSubTagId ? (
+            // 视图B：H2 单标签看板（无右栏）
+            <BoardView
+              subTags={db.subTags}
+              sections={db.sections}
+              tasks={db.tasks}
+              focusSessions={db.focusSessions}
+              h1TagId={db.subTags.find((s) => s.id === activeSubTagId)?.h1TagId ?? null}
+              activeSubTagId={activeSubTagId}
+            />
+          ) : activeListId !== 'all' && activeListId !== 'today' && tagMap.has(activeListId) ? (
+            // 视图A：H1 总览看板（该 H1 下所有 H2 平铺，无右栏）；'all'/'today' 保留原任务列表
+            <BoardView
+              subTags={db.subTags}
+              sections={db.sections}
+              tasks={db.tasks}
+              focusSessions={db.focusSessions}
+              h1TagId={activeListId}
+              activeSubTagId={null}
+            />
+          ) : (
+            <Tasks {...taskProps} activeListId={activeListId} />
+          )
         ) : page === 'focus' ? (
           <PomodoroPage
             tasks={focusPool}
@@ -413,19 +652,23 @@ export default function App() {
           <ImportantDays
             importantDays={db.importantDays}
             periodRecords={db.periodRecords}
+            aiName={aiName}
             onAddDay={addImportantDay}
             onUpdateDay={updateImportantDay}
             onDeleteDay={deleteImportantDay}
             onPeriodMark={markPeriod}
             onDeletePeriod={deletePeriod}
+            onPeriodReopen={reopenPeriod}
           />
         ) : (
-          <Placeholder label={PLACEHOLDER_PAGE[page] ?? ''} />
+          <Placeholder label={page === 'chat' ? `${aiName} 聊天` : PLACEHOLDER_PAGE[page] ?? ''} />
         )}
       </main>
 
-      {/* ===== 右栏：任务详情 ===== */}
-      {selected && (
+      {/* ===== 右栏：任务详情（仅列表视图：今天页 / 任务的 all·today·recent7；看板视图 H1/H2 不渲染，留最大空间） ===== */}
+      {selected &&
+        (page === 'today' ||
+          (page === 'tasks' && (activeListId === 'all' || activeListId === 'recent7' || activeListId === 'today'))) && (
         <aside className="w-[320px] shrink-0 border-l border-neutral-200 dark:border-neutral-800 p-5 overflow-y-auto">
           <div className="flex items-start justify-between gap-2">
             <h2 className="font-semibold text-[15px] leading-snug break-all">
@@ -501,9 +744,9 @@ export default function App() {
             />
           </div>
 
-          {/* AI 留言区（M6 上线后 Haruto 在这里写海蓝斜体留言） */}
+          {/* AI 留言区（M6 上线后他每天会来读任务、挑 2-3 条在这里留言） */}
           <div className="mt-5">
-            <div className="text-xs font-medium text-neutral-500 mb-1.5">💬 Haruto 的留言</div>
+            <div className="text-xs font-medium text-neutral-500 mb-1.5">💬 {aiName} 的留言</div>
             <div className="rounded-lg border border-dashed border-haruto-sea/30 p-3 text-sm italic text-haruto-sea/60">
               "……"（他每天会来读你的任务，挑 2-3 条在这里留言）
             </div>
@@ -526,6 +769,131 @@ export default function App() {
         </aside>
       )}
 
+      {/* ===== L2 菜单与弹窗 ===== */}
+      {h1Menu && (() => {
+        const t = db.tags.find((x) => x.id === h1Menu.tagId)
+        if (!t) return null
+        return (
+          <FloatingMenu
+            x={h1Menu.x}
+            y={h1Menu.y}
+            onClose={() => setH1Menu(null)}
+            entries={[
+              { label: '重命名', onClick: () => setRenamingH1(t.id) },
+              { label: '新建标签', onClick: () => setSubTagModal({ mode: 'create', h1TagId: t.id }) },
+              { label: t.isPinned ? '取消置顶' : '置顶', onClick: () => updateTag(t.id, { isPinned: !t.isPinned }) },
+              { label: '解散', danger: true, onClick: () => setDissolveConfirm({ tagId: t.id }) },
+            ]}
+          />
+        )
+      })()}
+
+      {subTagMenu && (() => {
+        const st = db.subTags.find((x) => x.id === subTagMenu.subTagId)
+        if (!st) return null
+        return (
+          <FloatingMenu
+            x={subTagMenu.x}
+            y={subTagMenu.y}
+            onClose={() => setSubTagMenu(null)}
+            entries={[
+              { label: '编辑', onClick: () => setSubTagModal({ mode: 'edit', h1TagId: st.h1TagId, subTag: st }) },
+              { label: st.isPinned ? '取消置顶' : '置顶', onClick: () => updateSubTag(st.id, { isPinned: !st.isPinned }) },
+              { label: st.sharedWithAI ? '取消共享给AI' : '共享给AI', onClick: () => updateSubTag(st.id, { sharedWithAI: !st.sharedWithAI }) },
+              { label: '删除', danger: true, onClick: () => deleteSubTag(st.id) },
+            ]}
+          />
+        )
+      })()}
+
+      {subTagModal && (
+        <SubTagModal
+          title={subTagModal.mode === 'edit' ? '编辑标签' : '新建标签'}
+          initial={
+            subTagModal.mode === 'edit' && subTagModal.subTag
+              ? { emoji: subTagModal.subTag.emoji, name: subTagModal.subTag.name, color: subTagModal.subTag.color }
+              : { emoji: '', name: '', color: H2_PALETTE[0] }
+          }
+          onCancel={() => setSubTagModal(null)}
+          onSave={(v) => {
+            if (subTagModal.mode === 'create') addSubTag(subTagModal.h1TagId, v.name, v.emoji, v.color)
+            else if (subTagModal.subTag) updateSubTag(subTagModal.subTag.id, v)
+            setSubTagModal(null)
+          }}
+        />
+      )}
+
+      {dissolveConfirm && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/30"
+          onMouseDown={(e) => e.target === e.currentTarget && setDissolveConfirm(null)}
+        >
+          <div className="w-72 rounded-xl bg-white dark:bg-neutral-800 shadow-xl border border-neutral-200 dark:border-neutral-700 p-5 animate-[fadeSlideIn_.15s_ease]">
+            <div className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed">
+              解散后该清单下的标签将变为未分组，确定解散？
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setDissolveConfirm(null)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  dissolveH1(dissolveConfirm.tagId)
+                  if (activeListId === dissolveConfirm.tagId) setActiveListId('all')
+                  setDissolveConfirm(null)
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white"
+              >
+                确认解散
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 设置弹窗（AI 名字等） ===== */}
+      {showSettings && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/30"
+          onMouseDown={(e) => e.target === e.currentTarget && setShowSettings(false)}
+        >
+          <div className="w-80 rounded-xl bg-white dark:bg-neutral-800 shadow-xl border border-neutral-200 dark:border-neutral-700 p-5 animate-[fadeSlideIn_.15s_ease]">
+            <div className="text-sm font-semibold mb-4">设置</div>
+            <div className="text-xs text-neutral-500 mb-1.5">AI 名字</div>
+            <input
+              autoFocus
+              value={aiNameDraft}
+              onChange={(e) => setAiNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveSettings()
+                if (e.key === 'Escape') setShowSettings(false)
+              }}
+              placeholder="AI 角色显示名"
+              className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700
+                bg-white dark:bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-haruto-sea"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveSettings}
+                disabled={!aiNameDraft.trim()}
+                className="text-xs px-3 py-1.5 rounded-lg bg-haruto-sea text-white disabled:opacity-40 disabled:cursor-default"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 番茄钟浮动条 */}
       {(pomoTarget || pomo) && (
         <PomodoroBar
@@ -537,6 +905,96 @@ export default function App() {
           onComplete={completePomo}
         />
       )}
+    </div>
+  )
+}
+
+// H2 标签新建/编辑弹窗：emoji（最多2字符）+ 名称（必填）+ 18色板
+function SubTagModal({ title, initial, onSave, onCancel }: {
+  title: string
+  initial: { emoji: string; name: string; color: string }
+  onSave: (v: { emoji: string; name: string; color: string }) => void
+  onCancel: () => void
+}) {
+  const [emoji, setEmoji] = useState(initial.emoji)
+  const [name, setName] = useState(initial.name)
+  const [color, setColor] = useState(initial.color)
+  const ok = name.trim().length > 0
+  // 按码点切防止截半个字符；含 ZWJ(\u200D) 的组合 emoji（如 🧘‍♀️）是一个整体，保留不切
+  const clampEmoji = (v: string) => (v.includes('\u200D') ? v : Array.from(v).slice(0, 2).join(''))
+  const submit = () => ok && onSave({ emoji: clampEmoji(emoji), name: name.trim(), color })
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/30"
+      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div className="w-80 rounded-xl bg-white dark:bg-neutral-800 shadow-xl border border-neutral-200 dark:border-neutral-700 p-5 animate-[fadeSlideIn_.15s_ease]">
+        <div className="text-sm font-semibold mb-4">{title}</div>
+        <div className="flex gap-2">
+          <input
+            value={emoji}
+            onChange={(e) => setEmoji(clampEmoji(e.target.value))}
+            placeholder="图标"
+            title="显示在标签名前，可留空"
+            className="w-12 text-center rounded-lg border border-neutral-200 dark:border-neutral-700
+              bg-white dark:bg-neutral-900 px-2 py-2 text-sm outline-none focus:border-haruto-sea"
+          />
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            placeholder="标签名称（必填）"
+            className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-700
+              bg-white dark:bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-haruto-sea"
+          />
+        </div>
+        {/* emoji 预设选择器：点击填入输入框（输入框仍可手动输入自定义） */}
+        <div className="mt-2 flex flex-wrap gap-1">
+          {EMOJI_PRESETS.map((e) => (
+            <button
+              key={e}
+              type="button"
+              onClick={() => setEmoji(e)}
+              title="点击选用"
+              className={`w-7 h-7 grid place-items-center rounded-md text-sm transition-colors
+                ${emoji === e
+                  ? 'bg-haruto-sea/15 ring-1 ring-haruto-sea'
+                  : 'hover:bg-black/5 dark:hover:bg-white/10'}`}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 mb-2 text-xs text-neutral-500">颜色</div>
+        <div className="grid grid-cols-9 gap-1.5">
+          {H2_PALETTE.map((c) => (
+            <button
+              key={c}
+              onClick={() => setColor(c)}
+              className={`w-5 h-5 rounded-full transition-transform hover:scale-110
+                ${color === c ? 'ring-2 ring-offset-2 ring-neutral-400 dark:ring-offset-neutral-800' : ''}`}
+              style={{ backgroundColor: c }}
+            />
+          ))}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="text-xs px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300"
+          >
+            取消
+          </button>
+          <button
+            onClick={submit}
+            disabled={!ok}
+            className="text-xs px-3 py-1.5 rounded-lg bg-haruto-sea text-white disabled:opacity-40 disabled:cursor-default"
+          >
+            确认
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
