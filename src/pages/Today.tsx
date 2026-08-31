@@ -1,8 +1,13 @@
 // 任务树体系：无限嵌套（主任务→子任务→子子任务…），任意层级统一右键、独立计时、行内加子任务
-import { useState } from 'react'
+// 今日页（Step 6 重构）：逾期/今天分组 + NewTaskBar 新建行 + ListTaskCard 列表卡片（左键选中进右栏详情）
+// TaskNode 仍保留供旧版任务列表页（全部清单）使用
+import { useMemo, useState } from 'react'
 import type { Task, Tag } from '../types'
 import FloatingMenu, { type MenuEntry } from '../components/FloatingMenu'
 import { IconChevron } from '../components/icons'
+import ListTaskCard from '../components/ListTaskCard'
+import NewTaskBar from '../components/NewTaskBar'
+import { buildTaskContextMenu, boardSort, type Priority } from '../components/BoardView'
 
 export function todayStr() {
   const d = new Date()
@@ -43,75 +48,14 @@ function descendantIds(taskId: string, allTasks: Task[]): Set<string> {
 }
 
 // 统一右键菜单（所有层级一致，问题1）
-function buildMenu(opts: {
-  task: Task
-  tags: Tag[]
-  linkable: Task[] // 可关联的主任务（已排除自身与子孙）
-  onUpdate: (id: string, p: Partial<Task>) => void
-  onDelete: (id: string) => void
-  onPomodoro: (t: Task) => void
-  onAddSub: (t: Task) => void // 触发行内添加子任务输入
-  onPickDate: (t: Task) => void // 触发行内日期选择
-}): MenuEntry[] {
-  const { task, tags, linkable, onUpdate, onDelete, onPomodoro, onAddSub, onPickDate } = opts
-  const today = todayStr()
-  const e: MenuEntry[] = [
-    {
-      label: '设置日期',
-      submenu: [
-        { label: '今天', onClick: () => onUpdate(task.id, { dueDate: today }) },
-        { label: '明天', onClick: () => onUpdate(task.id, { dueDate: addDaysStr(today, 1) }) },
-        { label: '后天', onClick: () => onUpdate(task.id, { dueDate: addDaysStr(today, 2) }) },
-        { label: '下周三', onClick: () => onUpdate(task.id, { dueDate: nextWeekdayStr(3, today) }) },
-        { label: '下周五', onClick: () => onUpdate(task.id, { dueDate: nextWeekdayStr(5, today) }) },
-        { label: '选择日期…', onClick: () => onPickDate(task) },
-        { label: '清除日期', onClick: () => onUpdate(task.id, { dueDate: null }) },
-      ],
-    },
-    { header: true, label: '设置优先级' },
-    ...(['high', 'mid', 'low', 'none'] as const).map((p) => ({
-      label: `${PRIORITY_LABEL[p]}${(task.priority ?? 'none') === p ? ' ✓' : ''}`,
-      onClick: () => onUpdate(task.id, { priority: p }),
-    })),
-    { header: true, label: '' },
-    { label: '＋ 添加子任务', onClick: () => onAddSub(task) },
-  ]
-  if (linkable.length) {
-    e.push(
-      { header: true, label: '关联主任务（时长并入其统计）' },
-      ...linkable.slice(0, 8).map((m) => ({
-        label: `${task.masterTaskId === m.id ? '✓ ' : ''}→ ${m.title}`,
-        onClick: () => onUpdate(task.id, { masterTaskId: m.id }),
-      })),
-    )
-    if (task.masterTaskId) e.push({ label: '取消关联', onClick: () => onUpdate(task.id, { masterTaskId: null }) })
-  }
-  e.push(
-    { header: true, label: '' },
-    {
-      label: task.isPinnedToday ? '取消置顶今日' : '📌 置顶今日',
-      onClick: () => onUpdate(task.id, { isPinnedToday: !task.isPinnedToday }),
-    },
-    { label: '🍅 开始专注', onClick: () => onPomodoro(task) },
-  )
-  if (tags.length) {
-    e.push(
-      { header: true, label: '移动到...' },
-      ...tags.map((t) => ({
-        label: `${task.tagId === t.id ? '✓ ' : ''}● ${t.name}`,
-        onClick: () => onUpdate(task.id, { tagId: t.id }),
-      })),
-    )
-  }
-  e.push({ header: true, label: '' }, { label: '删除', danger: true, onClick: () => onDelete(task.id) })
-  return e
-}
-
 /* ============ 递归任务节点 ============ */
 export function TaskNode(props: {
   task: Task
   allTasks: Task[]
   tags: Tag[]
+  subTags: import('../types').SubTag[]
+  sections: import('../types').Section[]
+  onDeleteTaskRecursive: (id: string) => void
   depth: number
   onUpdate: (id: string, patch: Partial<Task>) => void
   onDelete: (id: string) => void
@@ -122,7 +66,7 @@ export function TaskNode(props: {
   defaultExpanded?: boolean
   _seen?: Set<string> // 递归防环：祖先链上出现过的 id 不再展开
 }) {
-  const { task, allTasks, tags, depth, onUpdate, onDelete, onAdd, onPomodoro, selectedId, onSelect, defaultExpanded, _seen } = props
+  const { task, allTasks, tags, depth, subTags, sections, onUpdate, onDelete, onDeleteTaskRecursive, onAdd, onPomodoro, selectedId, onSelect, defaultExpanded, _seen } = props
   const seen = _seen ?? new Set([task.id])
   const children = allTasks.filter((c) => c.parentTaskId === task.id && !seen.has(c.id))
   const [expanded, setExpanded] = useState(!!defaultExpanded)
@@ -281,68 +225,161 @@ export function TaskNode(props: {
         <FloatingMenu
           x={menu.x}
           y={menu.y}
-          entries={buildMenu({ task, tags, linkable, onUpdate, onDelete, onPomodoro, onAddSub: () => setAdding(true), onPickDate: () => setPickingDate(true) })}
           onClose={() => setMenu(null)}
+          entries={(() => {
+            // 修正7：与其他视图共用七项菜单构建器；保留旧版「设置日期」子菜单与真实「关联主任务」
+            const entries = buildTaskContextMenu(task, {
+              tags,
+              subTags,
+              sections,
+              onRequestAddSubtask: () => setAdding(true),
+              onSetPriority: (id, p) => onUpdate(id, { priority: p }),
+              onTogglePinned: () => onUpdate(task.id, { isPinnedToday: !task.isPinnedToday }),
+              onUpdateTag: (id, tagId) => onUpdate(id, { tagId }),
+              onUpdateTaskSection: (id, sectionId) => onUpdate(id, { sectionId }),
+              onPomodoro,
+              onDeleteRequest: () => onDeleteTaskRecursive(task.id),
+              masterLink: {
+                linkable,
+                onLink: (masterId) => onUpdate(task.id, { masterTaskId: masterId }),
+                onUnlink: () => onUpdate(task.id, { masterTaskId: null }),
+              },
+            })
+            entries.unshift({
+              label: '设置日期',
+              submenu: [
+                { label: '今天', onClick: () => onUpdate(task.id, { dueDate: today }) },
+                { label: '明天', onClick: () => onUpdate(task.id, { dueDate: addDaysStr(today, 1) }) },
+                { label: '后天', onClick: () => onUpdate(task.id, { dueDate: addDaysStr(today, 2) }) },
+                { label: '下周三', onClick: () => onUpdate(task.id, { dueDate: nextWeekdayStr(3, today) }) },
+                { label: '下周五', onClick: () => onUpdate(task.id, { dueDate: nextWeekdayStr(5, today) }) },
+                { label: '选择日期…', onClick: () => setPickingDate(true) },
+                { label: '清除日期', onClick: () => onUpdate(task.id, { dueDate: null }) },
+              ],
+            })
+            return entries
+          })()}
         />
       )}
     </>
   )
 }
 
-/* ============ 今日页 ============ */
+/* ============ 今日页（Step 6 重构：逾期/今天分组 + 新建任务行 + 列表卡片 + 右栏详情） ============ */
 export default function Today(props: {
   tasks: Task[]
   tags: Tag[]
-  onAdd: (title: string, dueDate: string | null, tagId: string | null) => void
-  onAddSub: (title: string, parentId: string) => void
-  onUpdate: (id: string, patch: Partial<Task>) => void
-  onDelete: (id: string) => void
-  onPomodoro: (t: Task) => void
+  subTags: import('../types').SubTag[]
+  sections: import('../types').Section[]
+  focusSessions: import('../types').FocusSession[]
+  aiName: string
   selectedId: string | null
   onSelect: (id: string | null) => void
+  onAddTaskWithOptions: (title: string, opts: { dueDate?: string | null; priority?: Priority; tagId?: string | null }) => void
+  onToggleDone: (id: string) => void
+  onToggleChecklist: (taskId: string, itemId: string) => void
+  onAddChecklistItem: (taskId: string, text: string) => void
+  onUpdateChecklistItem: (taskId: string, itemId: string, patch: Partial<import('../types').ChecklistItem>) => void
+  onDeleteChecklistItem: (taskId: string, itemId: string) => void
+  onSetTaskReminder: (id: string, remindAt: string | null, remindDaysBefore: number | null) => void
+  onUpdateTaskDue: (id: string, dueDate: string | null) => void
+  onAddSubtask: (parentId: string, title: string) => void
+  onUpdateTag: (id: string, tagId: string | null) => void
+  onUpdateTaskSection: (id: string, sectionId: string | null) => void
+  onTogglePinned: (id: string) => void
+  onSetPriority: (id: string, p: Priority) => void
+  onPomodoro: (t: Task) => void
+  onDeleteTaskRecursive: (id: string) => void
+  onOpenSubTag: (subTagId: string) => void
 }) {
-  const { tasks, tags, onAdd, onAddSub, onUpdate, onDelete, onPomodoro, selectedId, onSelect } = props
+  const { tasks, selectedId, onSelect, onAddTaskWithOptions } = props
+  const minutesOf = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const s of props.focusSessions) m.set(s.taskId, (m.get(s.taskId) ?? 0) + s.minutes)
+    return (id: string) => m.get(id) ?? 0
+  }, [props.focusSessions])
+
   const today = todayStr()
   const mainTasks = tasks.filter((t) => !t.parentTaskId)
-  const todayMain = mainTasks.filter((t) => t.dueDate === today || t.isPinnedToday)
-  const pinned = todayMain.filter((t) => t.isPinnedToday && t.dueDate !== today)
-  const normal = todayMain.filter((t) => !pinned.includes(t))
-  const week = ['日', '一', '二', '三', '四', '五', '六'][new Date().getDay()]
+  // 已逾期：今天之前到期的未完成主任务，最久远的在最上
+  const overdue = mainTasks
+    .filter((t) => !t.done && t.dueDate && t.dueDate < today)
+    .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
+  const overdueIds = new Set(overdue.map((t) => t.id))
+  // 今天：今天到期 + 置顶今日（逾期的不重复出现）
+  const todays = mainTasks
+    .filter((t) => !t.done && !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday))
+    .sort(boardSort)
 
-  const nodeProps = { allTasks: tasks, tags, onUpdate, onDelete, onAdd: onAddSub, onPomodoro, selectedId, onSelect }
+  const cardBase = {
+    aiName: props.aiName,
+    tags: props.tags,
+    subTags: props.subTags,
+    sections: props.sections,
+    onToggleDone: props.onToggleDone,
+    onToggleChecklist: props.onToggleChecklist,
+    onAddChecklistItem: props.onAddChecklistItem,
+    onUpdateChecklistItem: props.onUpdateChecklistItem,
+    onDeleteChecklistItem: props.onDeleteChecklistItem,
+    onSetTaskReminder: props.onSetTaskReminder,
+    onUpdateTaskDue: props.onUpdateTaskDue,
+    onAddSubtask: props.onAddSubtask,
+    onUpdateTag: props.onUpdateTag,
+    onUpdateTaskSection: props.onUpdateTaskSection,
+    onTogglePinned: props.onTogglePinned,
+    onSetPriority: props.onSetPriority,
+    onPomodoro: props.onPomodoro,
+    onDeleteTaskRecursive: props.onDeleteTaskRecursive,
+    onOpenSubTag: props.onOpenSubTag,
+  }
+
+  const group = (label: string, items: Task[], tone: 'normal' | 'danger' = 'normal') =>
+    items.length > 0 ? (
+      <div className="mt-5">
+        <div className={`mb-2 text-xs font-medium ${tone === 'danger' ? 'text-red-400' : 'text-neutral-400'}`}>
+          {label} {items.length}
+        </div>
+        <div className="space-y-2">
+          {items.map((t) => (
+            <ListTaskCard
+              key={t.id}
+              task={t}
+              allTasks={tasks}
+              depth={0}
+              seen={new Set([t.id])}
+              selected={selectedId === t.id}
+              onSelect={() => onSelect(selectedId === t.id ? null : t.id)}
+              minutesOf={minutesOf}
+              {...cardBase}
+            />
+          ))}
+        </div>
+      </div>
+    ) : null
 
   return (
-    <div className="p-6 max-w-2xl">
-      <h1 className="text-xl font-bold">
-        今天 <span className="text-sm font-normal text-neutral-400">{today} 星期{week}</span>
-      </h1>
-      <input
-        placeholder="添加今天的任务，回车保存"
-        className="mt-4 w-full rounded-lg border border-neutral-200 dark:border-neutral-700
-          bg-white dark:bg-neutral-900 px-4 py-2.5 text-sm outline-none focus:border-haruto-sea"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-            onAdd(e.currentTarget.value.trim(), today, null)
-            e.currentTarget.value = ''
-          }
-        }}
-      />
-
-      {[
-        { label: `已置顶 ${pinned.length}`, list: pinned, showEmpty: false },
-        { label: `待办 ${normal.filter((t) => !t.done).length}`, list: normal.filter((t) => !t.done), showEmpty: true },
-        { label: `已完成 ${todayMain.filter((t) => t.done).length}`, list: todayMain.filter((t) => t.done), showEmpty: false },
-      ].map((g) =>
-        g.list.length || g.showEmpty ? (
-          <div key={g.label} className="mt-6">
-            <div className="text-xs font-medium text-neutral-400 mb-2">{g.label}</div>
-            {g.list.map((t) => (
-              <TaskNode key={t.id} task={t} depth={0} {...nodeProps} />
-            ))}
-            {!g.list.length && <div className="text-sm text-neutral-300 dark:text-neutral-600 py-4">空空如也</div>}
+    <div className="flex h-full flex-col p-6">
+      <div className="max-w-3xl">
+        <h1 className="text-xl font-bold">
+          今天 <span className="text-sm font-normal text-neutral-400">{today} 星期{['日', '一', '二', '三', '四', '五', '六'][new Date().getDay()]}</span>
+        </h1>
+        <div className="mt-4">
+          <NewTaskBar
+            subTags={props.subTags}
+            defaultDueDate={today}
+            onAdd={(title, due, priority, tagId) => onAddTaskWithOptions(title, { dueDate: due, priority, tagId })}
+          />
+        </div>
+      </div>
+      <div className="mt-2 max-w-3xl flex-1 overflow-y-auto pb-6">
+        {group('已逾期', overdue, 'danger')}
+        {group('今天', todays)}
+        {overdue.length === 0 && todays.length === 0 && (
+          <div className="mt-10 text-center text-sm text-neutral-300 dark:text-neutral-600">
+            今天没有安排，未来的任务去「最近7天」看
           </div>
-        ) : null,
-      )}
+        )}
+      </div>
     </div>
   )
 }

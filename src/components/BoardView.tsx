@@ -10,7 +10,7 @@ import { IconBell, IconChat, IconChevron, IconClock } from './icons'
 import FloatingMenu, { type MenuEntry } from './FloatingMenu'
 
 /* ---------- 排序：优先级(高>中>低>无) → dueDate 升序（无日期同优先级末尾）→ 无日期里新任务最上 ---------- */
-type Priority = 'none' | 'low' | 'mid' | 'high'
+export type Priority = 'none' | 'low' | 'mid' | 'high'
 const PRIO_W: Record<Priority, number> = { high: 0, mid: 1, low: 2, none: 3 }
 const PRIO_META: { v: Priority; label: string; color: string }[] = [
   { v: 'high', label: '高', color: '#ef4444' },
@@ -20,7 +20,7 @@ const PRIO_META: { v: Priority; label: string; color: string }[] = [
 ]
 const PRIO_COLOR: Record<Priority, string | null> = { high: '#ef4444', mid: '#f59e0b', low: '#3b82f6', none: null }
 
-function boardSort(a: Task, b: Task) {
+export function boardSort(a: Task, b: Task) {
   // 修正1：日期优先——都有日期且不同 → 日期升序；同日期/都无日期 → 优先级 → 新任务在前；有 vs 无 → 有日期在前
   if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) return a.dueDate.localeCompare(b.dueDate)
   const pw = PRIO_W[(a.priority ?? 'none') as Priority] - PRIO_W[(b.priority ?? 'none') as Priority]
@@ -46,7 +46,7 @@ const withCheck = (node: ReactNode, active: boolean) => (
 )
 
 /* ---------- 小时滚轮（00:00-23:00 间隔1小时：滚动列表点选，选中高亮） ---------- */
-function HourWheel({ value, onChange }: { value: number; onChange: (h: number) => void }) {
+export function HourWheel({ value, onChange }: { value: number; onChange: (h: number) => void }) {
   return (
     <div className="h-28 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700">
       {Array.from({ length: 24 }, (_, h) => (
@@ -68,7 +68,7 @@ function HourWheel({ value, onChange }: { value: number; onChange: (h: number) =
 }
 
 /* ---------- 日期步进器（‹ 日期 ›，自定义提醒选日期用，修正3） ---------- */
-function DayStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function DayStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const step = (n: number) => {
     const [y, m, d] = value.split('-').map(Number)
     const dt = new Date(y, m - 1, d + n)
@@ -84,7 +84,7 @@ function DayStepper({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 /* ---------- 事项级提醒选择（居中小卡）：提前天数 + 小时滚轮 → remindAt ISO ---------- */
-function RemindPicker({ onSave, onCancel }: { onSave: (iso: string) => void; onCancel: () => void }) {
+export function RemindPicker({ onSave, onCancel }: { onSave: (iso: string) => void; onCancel: () => void }) {
   const [days, setDays] = useState<number | 'custom'>(0)
   const [custom, setCustom] = useState('')
   const [customDate, setCustomDate] = useState(localToday()) // 修正3：自定义可选日期
@@ -157,25 +157,29 @@ function RemindPicker({ onSave, onCancel }: { onSave: (iso: string) => void; onC
   )
 }
 
-/* ---------- 任务日期选择器（居中 modal）：月历点选 + 提醒（提前天数 + 小时滚轮） ---------- */
-function DatePickerModal({
-  task,
+/* ---------- 任务日期选择器（居中 modal）：月历点选 + 提醒（提前天数 + 小时滚轮）；泛化初始值供列表视图复用 ---------- */
+export function DatePickerModal({
+  initialDueDate,
+  initialRemindAt,
+  initialRemindDays,
   onSave,
   onCancel,
 }: {
-  task: Task
+  initialDueDate: string | null
+  initialRemindAt: string | null
+  initialRemindDays: number | null
   onSave: (dueDate: string | null, remindAt: string | null, remindDaysBefore: number | null) => void
   onCancel: () => void
 }) {
   const now = new Date()
   const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() })
-  const [selected, setSelected] = useState<string | null>(task.dueDate)
+  const [selected, setSelected] = useState<string | null>(initialDueDate)
   const [remindHour, setRemindHour] = useState(9)
   const [remindChoice, setRemindChoice] = useState<number | 'custom' | undefined>(undefined) // undefined = 未动（保留原值）
   // 修正3：自定义提醒可选日期——默认任务 dueDate 的前一天（无日期则今天）
   const [customDate, setCustomDate] = useState(() => {
-    if (task.dueDate) {
-      const [y, m, d] = task.dueDate.split('-').map(Number)
+    if (initialDueDate) {
+      const [y, m, d] = initialDueDate.split('-').map(Number)
       const dt = new Date(y, m - 1, d - 1)
       return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`
     }
@@ -212,7 +216,7 @@ function DatePickerModal({
       }
       onSave(selected, base.toISOString(), days)
     } else {
-      onSave(selected, task.remindAt ?? null, task.remindDaysBefore ?? null)
+      onSave(selected, initialRemindAt ?? null, initialRemindDays ?? null)
     }
   }
 
@@ -341,6 +345,202 @@ export interface CardBundle {
   onSetPriority: (id: string, p: Priority) => void
   onPomodoro: (t: Task) => void
   onDeleteTaskRecursive: (id: string) => void // 修正2：递归删除任务及子孙
+  onOpenSubTag: (subTagId: string) => void // 修正4：点击 H2 归属跳转看板视图
+}
+
+/* ---------- 右键七项菜单构建器（看板卡片与今日/最近7天列表卡片共用） ---------- */
+export function buildTaskContextMenu(
+  task: Task,
+  d: {
+    tags: Tag[]
+    subTags: SubTag[]
+    sections: Section[]
+    onRequestAddSubtask: () => void
+    onSetPriority: (id: string, p: Priority) => void
+    onTogglePinned: (id: string) => void
+    onUpdateTag: (id: string, tagId: string | null) => void
+    onUpdateTaskSection: (id: string, sectionId: string | null) => void
+    onPomodoro: (t: Task) => void
+    onDeleteRequest: () => void
+    // 提供时把「关联主任务」占位换成真实关联子菜单（旧任务列表页用，时长归并逻辑在调用方）
+    masterLink?: {
+      linkable: Task[]
+      onLink: (masterId: string) => void
+      onUnlink: () => void
+    }
+  }
+): MenuEntry[] {
+  const byOrder = (a: { isPinned: boolean; order: number }, b: { isPinned: boolean; order: number }) =>
+    a.isPinned === b.isPinned ? a.order - b.order : a.isPinned ? -1 : 1
+  const byPinned = (a: Tag, b: Tag) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
+  const h2Label = (st: SubTag) => (st.emoji ? `${st.emoji} ` : '') + st.name
+  const prio = (task.priority ?? 'none') as Priority
+
+  const sectionEntry = (sec: Section): MenuEntry => ({
+    label: withCheck(sec.name, task.sectionId === sec.id),
+    onClick: () => d.onUpdateTaskSection(task.id, sec.id),
+  })
+  const h2MoveEntry = (st: SubTag): MenuEntry => {
+    const secs = d.sections.filter((s) => s.subTagId === st.id).sort((a, b) => a.order - b.order)
+    return { label: h2Label(st), submenu: secs.length ? secs.map(sectionEntry) : [{ label: '（暂无分组）' }] }
+  }
+  const moveEntries: MenuEntry[] = [...d.tags]
+    .sort(byPinned)
+    .map((h1) => ({ label: h1.name, submenu: d.subTags.filter((st) => st.h1TagId === h1.id).sort(byOrder).map(h2MoveEntry) }))
+  const orphanH2s = d.subTags.filter((st) => st.h1TagId === '').sort(byOrder)
+  if (orphanH2s.length) moveEntries.push({ label: '未分组', submenu: orphanH2s.map(h2MoveEntry) })
+
+  return [
+    {
+      label: '设置优先级',
+      submenu: PRIO_META.map((p) => ({
+        label: withCheck(
+          <span className="flex items-center gap-2">
+            {prioDot(p.color)}
+            {p.label}
+          </span>,
+          prio === p.v
+        ),
+        onClick: () => d.onSetPriority(task.id, p.v),
+      })),
+    },
+    { label: '添加子任务', onClick: d.onRequestAddSubtask },
+    {
+      label: d.masterLink ? '关联主任务' : '关联主任务（Step 6 开放）',
+      submenu: d.masterLink
+        ? [
+            ...d.masterLink.linkable.slice(0, 8).map((m) => ({
+              label: withCheck(`→ ${m.title}`, task.masterTaskId === m.id),
+              onClick: () => d.masterLink!.onLink(m.id),
+            })),
+            ...(task.masterTaskId ? [{ label: '取消关联', onClick: () => d.masterLink!.onUnlink() }] : []),
+          ]
+        : undefined, // 占位：无 submenu 无 onClick，点击仅关闭菜单
+    },
+    { label: withCheck('置顶今日', !!task.isPinnedToday), onClick: () => d.onTogglePinned(task.id) },
+    {
+      label: '标签',
+      submenu: d.subTags.length
+        ? [...d.subTags].sort(byOrder).map((st) => ({
+            label: withCheck(h2Label(st), task.tagId === st.id),
+            onClick: () => d.onUpdateTag(task.id, st.id),
+          }))
+        : [{ label: '（暂无标签）' }],
+    },
+    { label: '移动到', submenu: moveEntries },
+    { label: '🍅 开始专注', onClick: () => d.onPomodoro(task) },
+    { label: '删除', danger: true, onClick: d.onDeleteRequest },
+  ]
+}
+
+/* ---------- 检查事项行（悬空弹窗与右栏详情共用）：勾选 + 点击行内编辑 + 闹钟提醒 + 删除 ---------- */
+export function ChecklistRow({
+  item,
+  onToggle,
+  onUpdate,
+  onDelete,
+  onRemind,
+}: {
+  item: ChecklistItem
+  onToggle: () => void
+  onUpdate: (patch: Partial<ChecklistItem>) => void
+  onDelete: () => void
+  onRemind: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  return (
+    <div className="group flex items-center gap-2 rounded px-0.5 py-0.5 hover:bg-black/[0.03] dark:hover:bg-white/5">
+      <input type="checkbox" checked={item.done} onChange={onToggle} className="h-4 w-4 shrink-0 accent-haruto-sea" />
+      {editing ? (
+        <input
+          autoFocus
+          defaultValue={item.text}
+          onBlur={(e) => {
+            const v = e.target.value.trim()
+            if (v) onUpdate({ text: v })
+            setEditing(false)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          className="min-w-0 flex-1 border-b border-haruto-sea bg-transparent text-xs outline-none"
+        />
+      ) : (
+        <span
+          onClick={() => setEditing(true)}
+          className={`min-w-0 flex-1 cursor-text text-xs ${item.done ? 'text-neutral-400 line-through' : 'text-neutral-600 dark:text-neutral-300'}`}
+        >
+          {item.text}
+        </span>
+      )}
+      <button
+        onClick={onRemind}
+        title={item.remindAt ? `已设提醒 ${new Date(item.remindAt).toLocaleString()}` : '设置提醒'}
+        className={`shrink-0 transition-colors ${
+          item.remindAt ? 'text-[#5b8c5a]' : 'text-neutral-300 opacity-0 group-hover:opacity-100 hover:text-haruto-sea dark:text-neutral-600'
+        }`}
+      >
+        <span className="[&>svg]:h-3 [&>svg]:w-3">
+          <IconBell />
+        </span>
+      </button>
+      <button
+        onClick={onDelete}
+        title="删除该事项"
+        className="shrink-0 text-neutral-300 opacity-0 transition-colors group-hover:opacity-100 hover:text-red-500 dark:text-neutral-600"
+      >
+        <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+          <path d="M10 11v6M14 11v6" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+/* ---------- 检查事项添加行（弹窗/右栏共用，优化1）：回车保存并清空保持聚焦=连续添加；空行回车/Esc/失焦取消 ---------- */
+export function ChecklistAddRow({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (text: string) => void
+  onCancel: () => void
+}) {
+  const [text, setText] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+  return (
+    <input
+      ref={inputRef}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          const v = text.trim()
+          if (v) {
+            onAdd(v)
+            setText('') // 清空但不关闭：下一行立即可输入（连续添加）
+          } else {
+            onCancel()
+          }
+        }
+        if (e.key === 'Escape') onCancel()
+      }}
+      onBlur={() => {
+        if (!text.trim()) onCancel()
+        else {
+          onAdd(text.trim())
+          onCancel()
+        }
+      }}
+      placeholder="事项内容，回车连续添加，Esc 结束"
+      className="w-full rounded-lg border border-dashed border-haruto-sea/50 bg-transparent px-2 py-1 text-xs outline-none focus:border-haruto-sea"
+    />
+  )
 }
 
 /* ---------- 任务卡片：勾选框 + 优先级点 + 折叠三角 + meta + 悬空弹窗 + 右键菜单 ---------- */
@@ -371,6 +571,7 @@ function TaskCard({
   onSetPriority,
   onPomodoro,
   onDeleteTaskRecursive,
+  onOpenSubTag,
 }: { task: Task; columnTasks: Task[]; depth: number; seen: Set<string> } & CardBundle) {
   const cardRef = useRef<HTMLDivElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
@@ -379,7 +580,6 @@ function TaskCard({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [subInput, setSubInput] = useState(false)
   const [expanded, setExpanded] = useState(false) // 子任务折叠：默认只显示第一个
-  const [editingItemId, setEditingItemId] = useState<string | null>(null) // 事项文本行内编辑
   const [addingItem, setAddingItem] = useState(false) // ＋添加 事项输入框
   const [remindFor, setRemindFor] = useState<string | null>(null) // 事项级提醒 picker
   const [dateOpen, setDateOpen] = useState(false) // 日期选择 modal
@@ -425,55 +625,19 @@ function TaskCard({
     }
   }, [popOpen, onClosePopup])
 
-  /* 右键七项菜单 */
-  const byOrder = (a: { isPinned: boolean; order: number }, b: { isPinned: boolean; order: number }) =>
-    a.isPinned === b.isPinned ? a.order - b.order : a.isPinned ? -1 : 1
-  const byPinned = (a: Tag, b: Tag) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
-  const h2Label = (st: SubTag) => (st.emoji ? `${st.emoji} ` : '') + st.name
-  const sectionEntry = (sec: Section): MenuEntry => ({
-    label: withCheck(sec.name, task.sectionId === sec.id),
-    onClick: () => onUpdateTaskSection(task.id, sec.id),
+  /* 右键七项菜单（构建器已提取导出，列表视图卡片复用） */
+  const menuEntries = buildTaskContextMenu(task, {
+    tags,
+    subTags,
+    sections,
+    onRequestAddSubtask: () => setSubInput(true),
+    onSetPriority,
+    onTogglePinned,
+    onUpdateTag,
+    onUpdateTaskSection,
+    onPomodoro,
+    onDeleteRequest: () => setConfirmDelete(true),
   })
-  const h2MoveEntry = (st: SubTag): MenuEntry => {
-    const secs = sections.filter((s) => s.subTagId === st.id).sort((a, b) => a.order - b.order)
-    return { label: h2Label(st), submenu: secs.length ? secs.map(sectionEntry) : [{ label: '（暂无分组）' }] }
-  }
-  const moveEntries: MenuEntry[] = [...tags]
-    .sort(byPinned)
-    .map((h1) => ({ label: h1.name, submenu: subTags.filter((st) => st.h1TagId === h1.id).sort(byOrder).map(h2MoveEntry) }))
-  const orphanH2s = subTags.filter((st) => st.h1TagId === '').sort(byOrder)
-  if (orphanH2s.length) moveEntries.push({ label: '未分组', submenu: orphanH2s.map(h2MoveEntry) })
-
-  const menuEntries: MenuEntry[] = [
-    {
-      label: '设置优先级',
-      submenu: PRIO_META.map((p) => ({
-        label: withCheck(
-          <span className="flex items-center gap-2">
-            {prioDot(p.color)}
-            {p.label}
-          </span>,
-          prio === p.v
-        ),
-        onClick: () => onSetPriority(task.id, p.v),
-      })),
-    },
-    { label: '添加子任务', onClick: () => setSubInput(true) },
-    { label: '关联主任务（Step 6 开放）' }, // 占位：无 onClick，点击仅关闭菜单
-    { label: withCheck('置顶今日', !!task.isPinnedToday), onClick: () => onTogglePinned(task.id) },
-    {
-      label: '标签',
-      submenu: subTags.length
-        ? [...subTags].sort(byOrder).map((st) => ({
-            label: withCheck(h2Label(st), task.tagId === st.id),
-            onClick: () => onUpdateTag(task.id, st.id),
-          }))
-        : [{ label: '（暂无标签）' }],
-    },
-    { label: '移动到', submenu: moveEntries },
-    { label: '🍅 开始专注', onClick: () => onPomodoro(task) },
-    { label: '删除', danger: true, onClick: () => setConfirmDelete(true) }, // 修正2：递归删除
-  ]
 
   return (
     <div
@@ -533,9 +697,27 @@ function TaskCard({
           <div className="mt-1 flex items-center gap-2.5 text-[11px]">
             {task.dueDate &&
               (task.dueDate === today ? (
-                <span className="font-medium text-purple-500">今天</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setDateOpen(true)
+                  }}
+                  className="font-medium text-purple-500 hover:underline"
+                  title="点击修改日期与提醒"
+                >
+                  今天
+                </button>
               ) : (
-                <span className="tabular-nums text-neutral-600 dark:text-neutral-300">{task.dueDate.slice(5).replace('-', '/')}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setDateOpen(true)
+                  }}
+                  className="tabular-nums text-neutral-600 hover:text-haruto-sea hover:underline dark:text-neutral-300"
+                  title="点击修改日期与提醒"
+                >
+                  {task.dueDate.slice(5).replace('-', '/')}
+                </button>
               ))}
             {task.remindAt && (
               <span className="flex items-center text-haruto-sea" title="已设提醒">
@@ -599,7 +781,7 @@ function TaskCard({
                 minutesOf, aiName, tags, subTags, sections, activePopupId, onRequestPopup, onClosePopup,
                 onToggleDone, onToggleChecklist, onAddChecklistItem, onUpdateChecklistItem, onDeleteChecklistItem,
                 onSetTaskReminder, onUpdateTaskDue, onAddSubtask, onUpdateTag, onUpdateTaskSection,
-                onTogglePinned, onSetPriority, onPomodoro, onDeleteTaskRecursive,
+                onTogglePinned, onSetPriority, onPomodoro, onDeleteTaskRecursive, onOpenSubTag,
               }}
             />
           ))}
@@ -699,74 +881,19 @@ function TaskCard({
                   </div>
                   <div className="mt-1.5 space-y-1">
                     {task.checklistItems.map((c) => (
-                      <div key={c.id} className="group flex items-center gap-2 rounded px-0.5 py-0.5 hover:bg-black/[0.03] dark:hover:bg-white/5">
-                        <input
-                          type="checkbox"
-                          checked={c.done}
-                          onChange={() => onToggleChecklist(task.id, c.id)}
-                          className="h-4 w-4 shrink-0 accent-haruto-sea"
-                        />
-                        {editingItemId === c.id ? (
-                          <input
-                            autoFocus
-                            defaultValue={c.text}
-                            onBlur={(e) => {
-                              const v = e.target.value.trim()
-                              if (v) onUpdateChecklistItem(task.id, c.id, { text: v })
-                              setEditingItemId(null)
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                              if (e.key === 'Escape') setEditingItemId(null)
-                            }}
-                            className="min-w-0 flex-1 border-b border-haruto-sea bg-transparent text-xs outline-none"
-                          />
-                        ) : (
-                          <span
-                            onClick={() => setEditingItemId(c.id)}
-                            className={`min-w-0 flex-1 cursor-text text-xs ${c.done ? 'text-neutral-400 line-through' : 'text-neutral-600 dark:text-neutral-300'}`}
-                          >
-                            {c.text}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => setRemindFor(c.id)}
-                          title={c.remindAt ? `已设提醒 ${new Date(c.remindAt).toLocaleString()}` : '设置提醒'}
-                          className={`shrink-0 transition-colors ${
-                            c.remindAt ? 'text-[#5b8c5a]' : 'text-neutral-300 opacity-0 group-hover:opacity-100 hover:text-haruto-sea dark:text-neutral-600'
-                          }`}
-                        >
-                          <span className="[&>svg]:h-3 [&>svg]:w-3">
-                            <IconBell />
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => onDeleteChecklistItem(task.id, c.id)}
-                          title="删除该事项"
-                          className="shrink-0 text-neutral-300 opacity-0 transition-colors group-hover:opacity-100 hover:text-red-500 dark:text-neutral-600"
-                        >
-                          <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                            <path d="M10 11v6M14 11v6" />
-                          </svg>
-                        </button>
-                      </div>
+                      <ChecklistRow
+                        key={c.id}
+                        item={c}
+                        onToggle={() => onToggleChecklist(task.id, c.id)}
+                        onUpdate={(patch) => onUpdateChecklistItem(task.id, c.id, patch)}
+                        onDelete={() => onDeleteChecklistItem(task.id, c.id)}
+                        onRemind={() => setRemindFor(c.id)}
+                      />
                     ))}
                     {addingItem && (
-                      <input
-                        autoFocus
-                        placeholder="事项内容，回车保存"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            onAddChecklistItem(task.id, e.currentTarget.value.trim())
-                            e.currentTarget.value = ''
-                            setAddingItem(false)
-                          }
-                          if (e.key === 'Escape') setAddingItem(false)
-                        }}
-                        onBlur={() => setAddingItem(false)}
-                        className="w-full rounded-lg border border-dashed border-haruto-sea/50 bg-transparent px-2 py-1 text-xs outline-none focus:border-haruto-sea"
+                      <ChecklistAddRow
+                        onAdd={(t) => onAddChecklistItem(task.id, t)}
+                        onCancel={() => setAddingItem(false)}
                       />
                     )}
                     {task.checklistItems.length === 0 && !addingItem && (
@@ -808,7 +935,9 @@ function TaskCard({
       {/* 日期选择 modal */}
       {dateOpen && (
         <DatePickerModal
-          task={task}
+          initialDueDate={task.dueDate}
+          initialRemindAt={task.remindAt ?? null}
+          initialRemindDays={task.remindDaysBefore ?? null}
           onSave={(dueDate, remindAt, remindDaysBefore) => {
             onUpdateTaskDue(task.id, dueDate)
             onSetTaskReminder(task.id, remindAt, remindDaysBefore)
@@ -1091,6 +1220,7 @@ export interface BoardCallbacks {
   onSetPriority: (id: string, p: Priority) => void
   onPomodoro: (t: Task) => void
   onDeleteTaskRecursive: (id: string) => void
+  onOpenSubTag: (subTagId: string) => void
 }
 
 /* ---------- 看板主体 ---------- */
@@ -1125,6 +1255,7 @@ export default function BoardView({
   onSetPriority,
   onPomodoro,
   onDeleteTaskRecursive,
+  onOpenSubTag,
   h1TagId,
   activeSubTagId,
 }: {
@@ -1171,6 +1302,7 @@ export default function BoardView({
     onSetPriority,
     onPomodoro,
     onDeleteTaskRecursive,
+    onOpenSubTag,
   }
   const colBase = {
     card,

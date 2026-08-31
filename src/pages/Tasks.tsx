@@ -1,20 +1,23 @@
 // 任务页：按 L2 清单树选中项过滤，任务以无限嵌套树展示
-import type { Task, Tag } from '../types'
+import type { Section, SubTag, Task, Tag } from '../types'
 import { TaskNode, todayStr } from './Today'
 
 export default function Tasks(props: {
   tasks: Task[]
   tags: Tag[]
+  subTags: SubTag[]
+  sections: Section[]
   activeListId: string // 'all' | 'today' | tagId
   onAdd: (title: string, dueDate: string | null, tagId: string | null) => void
   onAddSub: (title: string, parentId: string) => void
   onUpdate: (id: string, patch: Partial<Task>) => void
   onDelete: (id: string) => void
+  onDeleteTaskRecursive: (id: string) => void
   onPomodoro: (t: Task) => void
   selectedId: string | null
   onSelect: (id: string | null) => void
 }) {
-  const { tasks, tags, activeListId, onAdd, onAddSub, onUpdate, onDelete, onPomodoro, selectedId, onSelect } = props
+  const { tasks, tags, subTags, sections, activeListId, onAdd, onAddSub, onUpdate, onDelete, onDeleteTaskRecursive, onPomodoro, selectedId, onSelect } = props
   const mainTasks = tasks.filter((t) => !t.parentTaskId)
   const today = todayStr()
   const filtered = mainTasks.filter((t) =>
@@ -32,7 +35,7 @@ export default function Tasks(props: {
   const done = filtered.filter((t) => t.done)
   const activeTag = activeListId !== 'all' && activeListId !== 'today' ? tags.find((t) => t.id === activeListId) : null
 
-  const nodeProps = { allTasks: tasks, tags, onUpdate, onDelete, onAdd: onAddSub, onPomodoro, selectedId, onSelect }
+  const nodeProps = { allTasks: tasks, tags, subTags, sections, onUpdate, onDelete, onDeleteTaskRecursive, onAdd: onAddSub, onPomodoro, selectedId, onSelect }
 
   return (
     <div className="p-6 max-w-2xl">

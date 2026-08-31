@@ -1,5 +1,5 @@
 // App = 三层结构：L1 图标导航栏 → L2 清单树（任务模块）→ L3 内容区 + 右侧详情
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Db, Task, Tag, SubTag, Section, ChecklistItem, Habit, ImportantDay } from './types'
 import PomodoroBar from './components/PomodoroBar'
 import FloatingMenu from './components/FloatingMenu'
@@ -13,6 +13,8 @@ import Stats from './pages/Stats'
 import ImportantDays from './pages/ImportantDays'
 import PomodoroPage from './pages/PomodoroPage'
 import Placeholder from './pages/Placeholder'
+import Recent7View from './components/Recent7View'
+import TaskDetailPanel from './components/TaskDetailPanel'
 
 type PageKey =
   | 'today' | 'tasks' | 'calendar' | 'habits' | 'stats' | 'focus'
@@ -94,6 +96,66 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [aiNameDraft, setAiNameDraft] = useState('')
 
+  // 修正1：右栏宽度可拖拽调整（localStorage 持久化，260-480px）
+  const [detailWidth, setDetailWidth] = useState<number>(() => {
+    const v = Number(localStorage.getItem('mh-detail-panel-width'))
+    return Number.isFinite(v) && v >= 260 && v <= 480 ? v : 320
+  })
+  const detailDragRef = useRef<{ startX: number; startW: number } | null>(null)
+  const startDetailResize = (clientX: number) => {
+    detailDragRef.current = { startX: clientX, startW: detailWidth }
+    const onMove = (ev: MouseEvent) => {
+      if (!detailDragRef.current) return
+      const w = Math.max(260, Math.min(480, detailDragRef.current.startW - (ev.clientX - detailDragRef.current.startX)))
+      setDetailWidth(w)
+      localStorage.setItem('mh-detail-panel-width', String(w))
+    }
+    const onUp = () => {
+      detailDragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  // 修正3：L2 的 H1/H2 拖拽排序（置顶项固定最前不参与）
+  const [l2Drag, setL2Drag] = useState<{ kind: 'h1' | 'h2'; id: string } | null>(null)
+  const [l2Over, setL2Over] = useState<{ kind: 'h1' | 'h2'; id: string; pos: 'before' | 'after' } | null>(null)
+  const moveH1 = (dragId: string, targetId: string, pos: 'before' | 'after') =>
+    setDb((d) => {
+      const arr = [...d.tags]
+      if (!arr.some((t) => t.id === dragId) || dragId === targetId) return d
+      const from = arr.findIndex((t) => t.id === dragId)
+      const [item] = arr.splice(from, 1)
+      const toIdx = arr.findIndex((t) => t.id === targetId)
+      arr.splice(pos === 'before' ? toIdx : toIdx + 1, 0, item)
+      return { ...d, tags: arr }
+    })
+  const moveSubTag = (dragId: string, targetId: string, pos: 'before' | 'after') =>
+    setDb((d) => {
+      const drag = d.subTags.find((s) => s.id === dragId)
+      const target = d.subTags.find((s) => s.id === targetId)
+      if (!drag || !target || drag.h1TagId !== target.h1TagId || drag.isPinned || target.isPinned) return d
+      const group = d.subTags.filter((s) => s.h1TagId === drag.h1TagId && !s.isPinned).sort((a, b) => a.order - b.order)
+      const from = group.findIndex((s) => s.id === dragId)
+      if (from < 0 || !group.some((s) => s.id === targetId) || dragId === targetId) return d
+      const [item] = group.splice(from, 1)
+      const toIdx = group.findIndex((s) => s.id === targetId)
+      group.splice(pos === 'before' ? toIdx : toIdx + 1, 0, item)
+      const orderMap = new Map(group.map((s, i) => [s.id, i]))
+      return { ...d, subTags: d.subTags.map((s) => (orderMap.has(s.id) ? { ...s, order: orderMap.get(s.id)! } : s)) }
+    })
+
+  // 修正4：点击 H2 归属跳转该标签的看板视图
+  const openSubTagBoard = (subTagId: string) => {
+    const st = db.subTags.find((s) => s.id === subTagId)
+    setActiveSubTagId(subTagId)
+    setActiveListId(st?.h1TagId || 'all')
+    setPage('tasks')
+    setSelectedId(null)
+  }
+
   useEffect(() => {
     window.myharuto.getDb().then((d) => {
       setDb(d)
@@ -128,6 +190,21 @@ export default function App() {
       tasks: [
         { id: uid(), title, description: '', dueDate, done: false, createdAt: new Date().toISOString(),
           tagId, parentTaskId: null, priority: 'none', masterTaskId: null, isPinnedToday: false,
+          sectionId: null, checklistItems: [], taskComments: [] },
+        ...d.tasks,
+      ],
+    }))
+
+  // 带选项新建（今日/最近7天新建行）：优先级 + tagId（H2 的 h1TagId）+ 日期；sectionId null
+  const addTaskWithOptions = (
+    title: string,
+    opts: { dueDate?: string | null; priority?: NonNullable<Task['priority']>; tagId?: string | null }
+  ) =>
+    setDb((d) => ({
+      ...d,
+      tasks: [
+        { id: uid(), title, description: '', dueDate: opts.dueDate ?? null, done: false, createdAt: new Date().toISOString(),
+          tagId: opts.tagId ?? null, parentTaskId: null, priority: opts.priority ?? 'none', masterTaskId: null, isPinnedToday: false,
           sectionId: null, checklistItems: [], taskComments: [] },
         ...d.tasks,
       ],
@@ -192,7 +269,11 @@ export default function App() {
     })
 
   const selectSubTag = (subTagId: string) => {
+    const st = db.subTags.find((s) => s.id === subTagId)
     setActiveSubTagId(subTagId)
+    // 同步归属 H1：否则从最近7天进看板会被 L3 的 recent7 分支拦截（点击无反应），从今天进会泄漏旧右栏
+    setActiveListId(st?.h1TagId || 'all')
+    setSelectedId(null) // 看板无右栏，切入时自动收起
     setPage('tasks')
   }
 
@@ -535,6 +616,9 @@ export default function App() {
   const taskProps = {
     tasks: db.tasks,
     tags: db.tags,
+    subTags: db.subTags,
+    sections: db.sections,
+    onDeleteTaskRecursive: deleteTaskRecursive,
     onAdd: addTask,
     onAddSub: addSubtask,
     onUpdate: updateTask,
@@ -580,6 +664,42 @@ export default function App() {
     onSetPriority: setTaskPriority,
     onPomodoro: (t: Task) => setPomoTarget(t),
     onDeleteTaskRecursive: deleteTaskRecursive,
+    onOpenSubTag: openSubTagBoard,
+  }
+
+  // 今日/最近7天列表视图共享 props（Step 6）
+  const minutesOf = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const s of db.focusSessions) m.set(s.taskId, (m.get(s.taskId) ?? 0) + s.minutes)
+    return (id: string) => m.get(id) ?? 0
+  }, [db.focusSessions])
+  const listViewProps = {
+    tasks: db.tasks,
+    tags: db.tags,
+    subTags: db.subTags,
+    sections: db.sections,
+    focusSessions: db.focusSessions,
+    aiName,
+    selectedId,
+    onSelect: (id: string | null) => setSelectedId(id),
+    minutesOf,
+    onOpenSubTag: openSubTagBoard,
+    onAddTaskWithOptions: addTaskWithOptions,
+    onToggleDone: toggleTaskDone,
+    onToggleChecklist: toggleChecklistItem,
+    onAddChecklistItem: addChecklistItem,
+    onUpdateChecklistItem: updateChecklistItem,
+    onDeleteChecklistItem: deleteChecklistItem,
+    onSetTaskReminder: setTaskReminder,
+    onUpdateTaskDue: updateTaskDue,
+    onAddSubtask: addSubtaskInline,
+    onUpdateTag: updateTaskTag,
+    onUpdateTaskSection: updateTaskSection,
+    onTogglePinned: togglePinnedToday,
+    onSetPriority: setTaskPriority,
+    onPomodoro: (t: Task) => setPomoTarget(t),
+    onDeleteTaskRecursive: deleteTaskRecursive,
+    onUpdateTask: updateTask,
   }
 
   // 专注页任务池：符合条件的主任务 + 它们的全部子任务（子任务可独立计时，问题2）
@@ -597,24 +717,60 @@ export default function App() {
       .sort((a, b) => (a.isPinned === b.isPinned ? a.order - b.order : a.isPinned ? -1 : 1))
 
   // H2 行（无左内边距：由外层缩进容器统一提供 28px + 竖线）；色点在行最右（修正6：H2 持有颜色标识，H1 不再显示色点）
-  const renderSubTagRow = (st: SubTag) => (
+  const renderSubTagRow = (st: SubTag) => {
+    const dragOverH2 = l2Over?.kind === 'h2' && l2Over.id === st.id
+    return (
     <button
       key={st.id}
+      onDragOver={(e) => {
+        if (!l2Drag || l2Drag.kind !== 'h2' || l2Drag.id === st.id || st.isPinned) return
+        e.preventDefault()
+        const r = e.currentTarget.getBoundingClientRect()
+        setL2Over({ kind: 'h2', id: st.id, pos: e.clientY < r.top + r.height / 2 ? 'before' : 'after' })
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        if (l2Drag && l2Over?.id === st.id) moveSubTag(l2Drag.id, st.id, l2Over.pos)
+        setL2Drag(null)
+        setL2Over(null)
+      }}
       onClick={() => selectSubTag(st.id)}
       onContextMenu={(e) => {
         e.preventDefault()
         setSubTagMenu({ subTagId: st.id, x: e.clientX, y: e.clientY })
       }}
-      className={`w-full flex items-center gap-1.5 pr-2 py-1.5 rounded-lg text-[13px]
+      className={`group/sub w-full flex items-center gap-1.5 pr-2 py-1.5 rounded-lg text-[13px] transition-[border-color]
         ${activeSubTagId === st.id && page === 'tasks'
           ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
-          : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+          : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}
+        ${dragOverH2 ? (l2Over!.pos === 'before' ? 'border-t-2 border-t-haruto-sea' : 'border-b-2 border-b-haruto-sea') : ''}
+        ${l2Drag?.kind === 'h2' && l2Drag.id === st.id ? 'opacity-50' : ''}`}
     >
+      {/* Bug2 修复：拖拽把手模式——只有把手 draggable，行内 click 不再被拖拽吞掉 */}
+      {!st.isPinned && (
+        <span
+          draggable
+          onDragStart={(e) => {
+            setL2Drag({ kind: 'h2', id: st.id })
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+          onDragEnd={() => {
+            setL2Drag(null)
+            setL2Over(null)
+          }}
+          onClick={(e) => e.stopPropagation()}
+          title="拖动排序"
+          className="cursor-grab shrink-0 w-2 text-center text-neutral-300 opacity-0 group-hover/sub:opacity-100 transition-opacity select-none"
+        >
+          ⠿
+        </span>
+      )}
       {st.emoji && <span className="text-xs shrink-0">{st.emoji}</span>}
       <span className="truncate">{st.name}</span>
       <span className="ml-auto mr-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: st.color }} />
     </button>
-  )
+    )
+  }
 
   // H2 列表容器：缩进 28px（13px 外距 + 15px 内距），浅色竖线分隔视觉层级
   const subTagIndentCls =
@@ -644,17 +800,51 @@ export default function App() {
           />
         ) : (
           <div
+            onDragOver={(e) => {
+              if (!l2Drag || l2Drag.kind !== 'h1' || l2Drag.id === t.id || t.isPinned) return
+              e.preventDefault()
+              const r = e.currentTarget.getBoundingClientRect()
+              setL2Over({ kind: 'h1', id: t.id, pos: e.clientY < r.top + r.height / 2 ? 'before' : 'after' })
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              if (l2Drag && l2Over?.id === t.id) moveH1(l2Drag.id, t.id, l2Over.pos)
+              setL2Drag(null)
+              setL2Over(null)
+            }}
             onClick={() => {
               toggleH1Expand(t.id)
               setActiveListId(t.id)
               setActiveSubTagId(null)
+              setSelectedId(null) // 看板无右栏，切入时自动收起
               setPage('tasks')
             }}
-            className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm cursor-pointer select-none
+            className={`group/h1 w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm cursor-pointer select-none transition-[border-color]
               ${isActive
                 ? 'bg-haruto-sea/15 text-haruto-sea font-medium'
-                : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                : 'text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}
+              ${l2Over?.kind === 'h1' && l2Over.id === t.id ? (l2Over.pos === 'before' ? 'border-t-2 border-t-haruto-sea' : 'border-b-2 border-b-haruto-sea') : ''}
+              ${l2Drag?.kind === 'h1' && l2Drag.id === t.id ? 'opacity-50' : ''}`}
           >
+            {/* Bug2 修复：拖拽把手模式（置顶项无把手） */}
+            {!t.isPinned && (
+              <span
+                draggable
+                onDragStart={(e) => {
+                  setL2Drag({ kind: 'h1', id: t.id })
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragEnd={() => {
+                  setL2Drag(null)
+                  setL2Over(null)
+                }}
+                onClick={(e) => e.stopPropagation()}
+                title="拖动排序"
+                className="cursor-grab shrink-0 text-neutral-300 opacity-0 group-hover/h1:opacity-100 hover:text-neutral-500 transition-opacity select-none"
+              >
+                ⠿
+              </span>
+            )}
             <span className="shrink-0 text-neutral-400"><IconChevron open={expanded} /></span>
             <span className="truncate flex-1">{t.name}</span>
             {/* H2 标签数量（无 H2 时不显示，避免无意义的 0） */}
@@ -827,10 +1017,10 @@ export default function App() {
         {!loaded ? (
           <div className="h-full grid place-items-center text-neutral-400">加载中…</div>
         ) : page === 'today' ? (
-          <Today {...taskProps} />
+          <Today {...listViewProps} />
         ) : page === 'tasks' ? (
           activeListId === 'recent7' ? (
-            <div className="h-full grid place-items-center text-neutral-400">最近7天功能开发中</div>
+            <Recent7View {...listViewProps} />
           ) : activeSubTagId ? (
             // 视图B：H2 单标签看板（无右栏）
             <BoardView
@@ -894,10 +1084,45 @@ export default function App() {
         )}
       </main>
 
-      {/* ===== 右栏：任务详情（仅列表视图：今天页 / 任务的 all·today·recent7；看板视图 H1/H2 不渲染，留最大空间） ===== */}
-      {selected &&
-        (page === 'today' ||
-          (page === 'tasks' && (activeListId === 'all' || activeListId === 'recent7' || activeListId === 'today'))) && (
+      {/* ===== 右栏 A：任务详情面板（今日页 / 最近7天；文本可编辑+检查事项+AI留言区，Step 6） ===== */}
+      {selected && (page === 'today' || (page === 'tasks' && activeListId === 'recent7')) && (
+        <div
+          onMouseDown={(e) => startDetailResize(e.clientX)}
+          title="拖动调整宽度"
+          className="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-haruto-sea/30"
+        />
+      )}
+      {selected && (page === 'today' || (page === 'tasks' && activeListId === 'recent7')) && (
+        <aside
+          style={{ width: detailWidth }}
+          className="shrink-0 overflow-hidden border-l border-neutral-200 p-5 dark:border-neutral-800"
+        >
+          <div className="flex h-full flex-col">
+            <button
+              onClick={() => setSelectedId(null)}
+              className="mb-1 self-end text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+              title="收起"
+            >
+              ×
+            </button>
+            <TaskDetailPanel
+              task={selected}
+              aiName={aiName}
+              subTags={db.subTags}
+              sections={db.sections}
+              onOpenSubTag={openSubTagBoard}
+              onUpdateTask={updateTask}
+              onToggleChecklist={toggleChecklistItem}
+              onAddChecklistItem={addChecklistItem}
+              onUpdateChecklistItem={updateChecklistItem}
+              onDeleteChecklistItem={deleteChecklistItem}
+            />
+          </div>
+        </aside>
+      )}
+
+      {/* ===== 右栏 B：旧版详情（任务的 all·today 列表选中时；看板视图不渲染） ===== */}
+      {selected && page === 'tasks' && (activeListId === 'all' || activeListId === 'today') && (
         <aside className="w-[320px] shrink-0 border-l border-neutral-200 dark:border-neutral-800 p-5 overflow-y-auto">
           <div className="flex items-start justify-between gap-2">
             <h2 className="font-semibold text-[15px] leading-snug break-all">
