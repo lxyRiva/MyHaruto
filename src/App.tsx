@@ -445,6 +445,8 @@ export default function App() {
     })
   const togglePinnedToday = (id: string) =>
     setDb((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, isPinnedToday: !t.isPinnedToday } : t)) }))
+  // 关联主任务（任务2）：时长归并由 Stats.rootTaskIdOf 沿 parentTaskId+masterTaskId 链处理
+  const setMasterTask = (id: string, masterTaskId: string | null) => updateTask(id, { masterTaskId })
   const setTaskPriority = (id: string, priority: NonNullable<Task['priority']>) => updateTask(id, { priority })
   const toggleChecklistItem = (taskId: string, itemId: string) =>
     setDb((d) => ({
@@ -633,6 +635,7 @@ export default function App() {
     subTags: db.subTags,
     sections: db.sections,
     tasks: db.tasks,
+    onSetMasterTask: setMasterTask,
     focusSessions: db.focusSessions,
     tags: db.tags,
     renamingSectionId,
@@ -697,6 +700,7 @@ export default function App() {
     onUpdateTaskSection: updateTaskSection,
     onTogglePinned: togglePinnedToday,
     onSetPriority: setTaskPriority,
+    onSetMasterTask: setMasterTask,
     onPomodoro: (t: Task) => setPomoTarget(t),
     onDeleteTaskRecursive: deleteTaskRecursive,
     onUpdateTask: updateTask,

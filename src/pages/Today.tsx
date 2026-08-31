@@ -229,6 +229,7 @@ export function TaskNode(props: {
           entries={(() => {
             // 修正7：与其他视图共用七项菜单构建器；保留旧版「设置日期」子菜单与真实「关联主任务」
             const entries = buildTaskContextMenu(task, {
+              allTasks,
               tags,
               subTags,
               sections,
@@ -238,12 +239,10 @@ export function TaskNode(props: {
               onUpdateTag: (id, tagId) => onUpdate(id, { tagId }),
               onUpdateTaskSection: (id, sectionId) => onUpdate(id, { sectionId }),
               onPomodoro,
+              onSetDueDate: (id, date) => onUpdate(id, { dueDate: date }),
+              onPickDate: () => setPickingDate(true),
               onDeleteRequest: () => onDeleteTaskRecursive(task.id),
-              masterLink: {
-                linkable,
-                onLink: (masterId) => onUpdate(task.id, { masterTaskId: masterId }),
-                onUnlink: () => onUpdate(task.id, { masterTaskId: null }),
-              },
+              onSetMasterTask: (id, masterId) => onUpdate(id, { masterTaskId: masterId }),
             })
             entries.unshift({
               label: '设置日期',
@@ -291,6 +290,7 @@ export default function Today(props: {
   onPomodoro: (t: Task) => void
   onDeleteTaskRecursive: (id: string) => void
   onOpenSubTag: (subTagId: string) => void
+  onSetMasterTask: (id: string, masterId: string | null) => void
 }) {
   const { tasks, selectedId, onSelect, onAddTaskWithOptions } = props
   const minutesOf = useMemo(() => {
@@ -331,6 +331,7 @@ export default function Today(props: {
     onPomodoro: props.onPomodoro,
     onDeleteTaskRecursive: props.onDeleteTaskRecursive,
     onOpenSubTag: props.onOpenSubTag,
+    onSetMasterTask: props.onSetMasterTask,
   }
 
   const group = (label: string, items: Task[], tone: 'normal' | 'danger' = 'normal') =>

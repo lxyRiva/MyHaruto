@@ -45,6 +45,7 @@ export default function Recent7View(props: {
     onUpdateTaskSection: props.onUpdateTaskSection,
     onTogglePinned: props.onTogglePinned,
     onSetPriority: props.onSetPriority,
+    onSetMasterTask: props.onSetMasterTask,
     onPomodoro: props.onPomodoro,
     onDeleteTaskRecursive: props.onDeleteTaskRecursive,
     onOpenSubTag: props.onOpenSubTag,

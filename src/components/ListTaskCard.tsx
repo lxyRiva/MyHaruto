@@ -25,6 +25,7 @@ export interface ListCardCallbacks {
   onUpdateTaskSection: (id: string, sectionId: string | null) => void
   onTogglePinned: (id: string) => void
   onSetPriority: (id: string, p: Priority) => void
+  onSetMasterTask: (id: string, masterId: string | null) => void
   onPomodoro: (t: Task) => void
   onDeleteTaskRecursive: (id: string) => void
   onOpenSubTag: (subTagId: string) => void // 修正4：点击 H2 归属跳转看板
@@ -61,6 +62,7 @@ export default function ListTaskCard({
   onUpdateTaskSection,
   onTogglePinned,
   onSetPriority,
+  onSetMasterTask,
   onPomodoro,
   onDeleteTaskRecursive,
   onOpenSubTag,
@@ -78,6 +80,7 @@ export default function ListTaskCard({
   const [expanded, setExpanded] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [dateOpen, setDateOpen] = useState(false)
+  const [pickingDate, setPickingDate] = useState(false)
   const today = localToday()
   const prio = (task.priority ?? 'none') as Priority
   const prioColor = PRIO_COLOR[prio]
@@ -226,6 +229,24 @@ export default function ListTaskCard({
         />
       )}
 
+      {pickingDate && (
+        <input
+          autoFocus
+          type="date"
+          defaultValue={task.dueDate ?? ''}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            onUpdateTaskDue(task.id, e.target.value || null)
+            setPickingDate(false)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setPickingDate(false)
+          }}
+          onBlur={() => setPickingDate(false)}
+          className="mt-2 w-full rounded-lg border border-haruto-sea/50 bg-transparent px-2 py-1 text-xs outline-none"
+        />
+      )}
+
       {children.length > 0 && (
         <div className="mt-2 space-y-2 border-l-2 border-neutral-100 pl-2.5 dark:border-neutral-800">
           {visibleChildren.map((c) => (
@@ -241,7 +262,8 @@ export default function ListTaskCard({
               {...{
                 aiName, tags, subTags, sections, onToggleDone, onToggleChecklist, onAddChecklistItem,
                 onUpdateChecklistItem, onDeleteChecklistItem, onSetTaskReminder, onUpdateTaskDue, onAddSubtask,
-                onUpdateTag, onUpdateTaskSection, onTogglePinned, onSetPriority, onPomodoro, onDeleteTaskRecursive, onOpenSubTag,
+                onUpdateTag, onUpdateTaskSection, onTogglePinned, onSetPriority, onSetMasterTask, onPomodoro,
+                onDeleteTaskRecursive, onOpenSubTag,
               }}
             />
           ))}
@@ -266,14 +288,18 @@ export default function ListTaskCard({
           y={menu.y}
           onClose={() => setMenu(null)}
           entries={buildTaskContextMenu(task, {
+            allTasks,
             tags,
             subTags,
             sections,
             onRequestAddSubtask: () => setSubInput(true),
             onSetPriority,
+            onSetMasterTask,
             onTogglePinned,
             onUpdateTag,
             onUpdateTaskSection,
+            onSetDueDate: onUpdateTaskDue,
+            onPickDate: () => setPickingDate(true),
             onPomodoro,
             onDeleteRequest: () => setConfirmDelete(true),
           })}

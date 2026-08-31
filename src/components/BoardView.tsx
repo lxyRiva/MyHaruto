@@ -323,6 +323,7 @@ export function DatePickerModal({
 /* ---------- 任务卡片回调束（App 下发，SectionColumn 透传给每张卡片） ---------- */
 export interface CardBundle {
   minutesOf: (id: string) => number
+  allTasks: Task[]
   aiName: string
   tags: Tag[]
   subTags: SubTag[]
@@ -343,31 +344,30 @@ export interface CardBundle {
   onUpdateTaskSection: (id: string, sectionId: string | null) => void
   onTogglePinned: (id: string) => void
   onSetPriority: (id: string, p: Priority) => void
+  onSetMasterTask: (id: string, masterId: string | null) => void
   onPomodoro: (t: Task) => void
   onDeleteTaskRecursive: (id: string) => void // 修正2：递归删除任务及子孙
   onOpenSubTag: (subTagId: string) => void // 修正4：点击 H2 归属跳转看板视图
 }
 
-/* ---------- 右键七项菜单构建器（看板卡片与今日/最近7天列表卡片共用） ---------- */
+/* ---------- 右键九项菜单构建器（四视图唯一菜单源）：优先级/添加子任务/关联主任务(真实)/置顶今日/标签/移动到/设置日期/开始专注/删除 ---------- */
 export function buildTaskContextMenu(
   task: Task,
   d: {
+    allTasks: Task[]
     tags: Tag[]
     subTags: SubTag[]
     sections: Section[]
     onRequestAddSubtask: () => void
     onSetPriority: (id: string, p: Priority) => void
+    onSetMasterTask: (id: string, masterId: string | null) => void
     onTogglePinned: (id: string) => void
     onUpdateTag: (id: string, tagId: string | null) => void
     onUpdateTaskSection: (id: string, sectionId: string | null) => void
+    onSetDueDate: (id: string, date: string | null) => void
+    onPickDate: () => void
     onPomodoro: (t: Task) => void
     onDeleteRequest: () => void
-    // 提供时把「关联主任务」占位换成真实关联子菜单（旧任务列表页用，时长归并逻辑在调用方）
-    masterLink?: {
-      linkable: Task[]
-      onLink: (masterId: string) => void
-      onUnlink: () => void
-    }
   }
 ): MenuEntry[] {
   const byOrder = (a: { isPinned: boolean; order: number }, b: { isPinned: boolean; order: number }) =>
@@ -375,6 +375,21 @@ export function buildTaskContextMenu(
   const byPinned = (a: Tag, b: Tag) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
   const h2Label = (st: SubTag) => (st.emoji ? `${st.emoji} ` : '') + st.name
   const prio = (task.priority ?? 'none') as Priority
+  const today = localToday()
+
+  // 关联候选：全部主任务 − 自己 − 自己的子孙（防环）
+  const banned = new Set<string>([task.id])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const t of d.allTasks) {
+      if (t.parentTaskId && banned.has(t.parentTaskId) && !banned.has(t.id)) {
+        banned.add(t.id)
+        grew = true
+      }
+    }
+  }
+  const linkable = d.allTasks.filter((t) => !t.parentTaskId && !banned.has(t.id))
 
   const sectionEntry = (sec: Section): MenuEntry => ({
     label: withCheck(sec.name, task.sectionId === sec.id),
@@ -406,16 +421,18 @@ export function buildTaskContextMenu(
     },
     { label: '添加子任务', onClick: d.onRequestAddSubtask },
     {
-      label: d.masterLink ? '关联主任务' : '关联主任务（Step 6 开放）',
-      submenu: d.masterLink
-        ? [
-            ...d.masterLink.linkable.slice(0, 8).map((m) => ({
-              label: withCheck(`→ ${m.title}`, task.masterTaskId === m.id),
-              onClick: () => d.masterLink!.onLink(m.id),
-            })),
-            ...(task.masterTaskId ? [{ label: '取消关联', onClick: () => d.masterLink!.onUnlink() }] : []),
-          ]
-        : undefined, // 占位：无 submenu 无 onClick，点击仅关闭菜单
+      // 任务2：真实关联（子任务的 masterTaskId 独立，均可关联）
+      label: '关联主任务',
+      submenu:
+        linkable.length || task.masterTaskId
+          ? [
+              ...linkable.slice(0, 12).map((m) => ({
+                label: withCheck(`→ ${m.title}`, task.masterTaskId === m.id),
+                onClick: () => d.onSetMasterTask(task.id, m.id),
+              })),
+              ...(task.masterTaskId ? [{ label: '取消关联', onClick: () => d.onSetMasterTask(task.id, null) }] : []),
+            ]
+          : [{ label: '（暂无可关联的主任务）' }],
     },
     { label: withCheck('置顶今日', !!task.isPinnedToday), onClick: () => d.onTogglePinned(task.id) },
     {
@@ -428,9 +445,35 @@ export function buildTaskContextMenu(
         : [{ label: '（暂无标签）' }],
     },
     { label: '移动到', submenu: moveEntries },
+    {
+      label: '设置日期',
+      submenu: [
+        { label: '今天', onClick: () => d.onSetDueDate(task.id, today) },
+        { label: '明天', onClick: () => d.onSetDueDate(task.id, addDaysStr(today, 1)) },
+        { label: '后天', onClick: () => d.onSetDueDate(task.id, addDaysStr(today, 2)) },
+        { label: '下周三', onClick: () => d.onSetDueDate(task.id, nextWeekdayStr(3, today)) },
+        { label: '下周五', onClick: () => d.onSetDueDate(task.id, nextWeekdayStr(5, today)) },
+        { label: '选择日期…', onClick: d.onPickDate },
+        { label: '清除日期', onClick: () => d.onSetDueDate(task.id, null) },
+      ],
+    },
     { label: '🍅 开始专注', onClick: () => d.onPomodoro(task) },
     { label: '删除', danger: true, onClick: d.onDeleteRequest },
   ]
+}
+
+/* ---------- 日期工具（设置日期子菜单用） ---------- */
+function addDaysStr(base: string, n: number): string {
+  const [y, m, d] = base.split('-').map(Number)
+  const dt = new Date(y, m - 1, d + n)
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`
+}
+function nextWeekdayStr(target: number, base: string): string {
+  const [y, m, d] = base.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  const diff = (((target - dt.getDay()) % 7) + 7) % 7 || 7
+  dt.setDate(dt.getDate() + diff)
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`
 }
 
 /* ---------- 检查事项行（悬空弹窗与右栏详情共用）：勾选 + 点击行内编辑 + 闹钟提醒 + 删除 ---------- */
@@ -550,6 +593,7 @@ function TaskCard({
   depth,
   seen,
   minutesOf,
+  allTasks,
   aiName,
   tags,
   subTags,
@@ -569,6 +613,7 @@ function TaskCard({
   onUpdateTaskSection,
   onTogglePinned,
   onSetPriority,
+  onSetMasterTask,
   onPomodoro,
   onDeleteTaskRecursive,
   onOpenSubTag,
@@ -583,6 +628,7 @@ function TaskCard({
   const [addingItem, setAddingItem] = useState(false) // ＋添加 事项输入框
   const [remindFor, setRemindFor] = useState<string | null>(null) // 事项级提醒 picker
   const [dateOpen, setDateOpen] = useState(false) // 日期选择 modal
+  const [pickingDate, setPickingDate] = useState(false) // 行内日期选择（菜单"选择日期…"）
   const [confirmDelete, setConfirmDelete] = useState(false) // 修正2：删除任务确认
   const popOpen = activePopupId === task.id && !!pop
   const minutes = minutesOf(task.id)
@@ -627,14 +673,18 @@ function TaskCard({
 
   /* 右键七项菜单（构建器已提取导出，列表视图卡片复用） */
   const menuEntries = buildTaskContextMenu(task, {
+    allTasks,
     tags,
     subTags,
     sections,
     onRequestAddSubtask: () => setSubInput(true),
     onSetPriority,
+    onSetMasterTask,
     onTogglePinned,
     onUpdateTag,
     onUpdateTaskSection,
+    onSetDueDate: onUpdateTaskDue,
+    onPickDate: () => setPickingDate(true),
     onPomodoro,
     onDeleteRequest: () => setConfirmDelete(true),
   })
@@ -767,6 +817,25 @@ function TaskCard({
         />
       )}
 
+      {/* 行内日期选择（菜单"选择日期…"触发，选完即存） */}
+      {pickingDate && (
+        <input
+          autoFocus
+          type="date"
+          defaultValue={task.dueDate ?? ''}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            onUpdateTaskDue(task.id, e.target.value || null)
+            setPickingDate(false)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setPickingDate(false)
+          }}
+          onBlur={() => setPickingDate(false)}
+          className="mt-2 w-full rounded-lg border border-haruto-sea/50 bg-transparent px-2 py-1 text-xs outline-none"
+        />
+      )}
+
       {/* 子任务嵌套：折叠时只显示第一个 + 「还有 N 项」；展开显示全部 */}
       {children.length > 0 && (
         <div className="mt-2 space-y-2 border-l-2 border-neutral-100 pl-2 dark:border-neutral-800">
@@ -778,10 +847,10 @@ function TaskCard({
               depth={depth + 1}
               seen={childSeen(c.id)}
               {...{
-                minutesOf, aiName, tags, subTags, sections, activePopupId, onRequestPopup, onClosePopup,
+                minutesOf, allTasks, aiName, tags, subTags, sections, activePopupId, onRequestPopup, onClosePopup,
                 onToggleDone, onToggleChecklist, onAddChecklistItem, onUpdateChecklistItem, onDeleteChecklistItem,
                 onSetTaskReminder, onUpdateTaskDue, onAddSubtask, onUpdateTag, onUpdateTaskSection,
-                onTogglePinned, onSetPriority, onPomodoro, onDeleteTaskRecursive, onOpenSubTag,
+                onTogglePinned, onSetPriority, onSetMasterTask, onPomodoro, onDeleteTaskRecursive, onOpenSubTag,
               }}
             />
           ))}
@@ -1218,6 +1287,7 @@ export interface BoardCallbacks {
   onUpdateTaskSection: (id: string, sectionId: string | null) => void
   onTogglePinned: (id: string) => void
   onSetPriority: (id: string, p: Priority) => void
+  onSetMasterTask: (id: string, masterId: string | null) => void
   onPomodoro: (t: Task) => void
   onDeleteTaskRecursive: (id: string) => void
   onOpenSubTag: (subTagId: string) => void
@@ -1253,6 +1323,7 @@ export default function BoardView({
   onUpdateTaskSection,
   onTogglePinned,
   onSetPriority,
+  onSetMasterTask,
   onPomodoro,
   onDeleteTaskRecursive,
   onOpenSubTag,
@@ -1281,6 +1352,7 @@ export default function BoardView({
 
   const card: CardBundle = {
     minutesOf,
+    allTasks: tasks,
     aiName,
     tags,
     subTags,
@@ -1300,6 +1372,7 @@ export default function BoardView({
     onUpdateTaskSection,
     onTogglePinned,
     onSetPriority,
+    onSetMasterTask,
     onPomodoro,
     onDeleteTaskRecursive,
     onOpenSubTag,
