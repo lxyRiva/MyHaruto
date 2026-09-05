@@ -35,10 +35,27 @@ MyHaruto/
     ├── solarlunar.d.ts      # 农历库类型补丁
     ├── styles.css           # Tailwind 指令+全局样式+fadeSlideIn 动画
     │
-    ├── components/
-    │   ├── icons.tsx        # 线性图标库（lucide风格，侧栏/UI用）
-    │   ├── FloatingMenu.tsx # 右键浮层菜单（支持二级子菜单）
-    │   └── PomodoroBar.tsx  # 底部浮动计时条（倒计时/正计时）
+    ├── components/           # 跨视图组件（RF-P1 后）
+    │   ├── icons.tsx         # 线性图标库（lucide风格，侧栏/UI用）
+    │   ├── FloatingMenu.tsx  # 右键浮层菜单（支持二级子菜单）
+    │   ├── PomodoroBar.tsx   # 底部浮动计时条（倒计时/正计时）
+    │   ├── BoardView.tsx     # 看板视图 + 公共件库（菜单构建器/日期弹窗/检查事项/排序）
+    │   ├── ListTaskCard.tsx  # 列表任务卡片（今日/最近7天）
+    │   ├── NewTaskBar.tsx    # 新建任务行（日期+优先级+标签）
+    │   ├── TaskDetailPanel.tsx # 右栏任务详情（文本/检查事项+AI留言区）
+    │   └── Recent7View.tsx   # 最近7天视图
+    │
+    ├── features/             # ★ 按域分层（RF-P1 起）
+    │   ├── tasks/
+    │   │   ├── hooks/useTaskActions.ts    # 任务/清单/检查事项 32 个数据变更 (db,setDb)
+    │   │   ├── hooks/useTaskSelectors.ts  # 任务派生数据 (db,selectedId) 纯派生
+    │   │   └── components/SubTagModal.tsx # H2 标签弹窗 + PALETTE/H2_PALETTE/EMOJI_PRESETS
+    │   ├── pomodoro/hooks/usePomodoro.ts  # 番茄钟状态机（pomoCompletingRef 互斥锁）
+    │   ├── habits/hooks/useHabits.ts      # 习惯打卡数据变更
+    │   └── important-days/hooks/useImportantDays.ts # 重要日/生理期数据变更
+    │
+    └── shared/
+        └── utils/id.ts       # uid() 生成器
     │
     └── pages/
         ├── Today.tsx        # ★ 今日页 + TaskNode 递归任务树（无限嵌套+统一右键+行内编辑）

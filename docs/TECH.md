@@ -15,6 +15,16 @@
 
 无路由库（单窗口 useState 切页）、无状态管理库（App 单点 state+props 下发）、无 UI 组件库（全部手写 Tailwind）。
 
+### 1.1 features/ 分层（RF-P1 起）
+数据变更与派生逻辑按域拆入 hooks（RF-P1）：
+- `src/features/tasks/hooks/useTaskActions.ts`：任务/清单/检查事项 32 个数据变更动作，签名 `(db, setDb)`
+- `src/features/tasks/hooks/useTaskSelectors.ts`：任务派生数据（selected/focusPool/countOf/minutesOf 等），纯派生签名 `(db, selectedId)` 无副作用
+- `src/features/pomodoro/hooks/usePomodoro.ts`：番茄钟状态机（pomo/pomoTarget/互斥锁/startPomo/togglePomo/completePomo/abandonPomo），completePomo 的 50ms 解锁是既有设计勿改
+- `src/features/habits/hooks/useHabits.ts`、`src/features/important-days/hooks/useImportantDays.ts`：各域数据变更
+- `src/features/tasks/components/SubTagModal.tsx`：H2 标签弹窗，PALETTE/H2_PALETTE/EMOJI_PRESETS 随迁导出
+- `src/shared/utils/id.ts`：uid()
+- App.tsx 保留：路由四件套、L2 UI 及拖拽、props bundle、JSX；数据动作全部从 hooks 解构
+
 ## 2. 启动与构建
 
 ```bash

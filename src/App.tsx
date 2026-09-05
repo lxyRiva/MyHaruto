@@ -1,6 +1,6 @@
 // App = 三层结构：L1 图标导航栏 → L2 清单树（任务模块）→ L3 内容区 + 右侧详情
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Db, Task, Tag, SubTag, Section, ChecklistItem, Habit, ImportantDay } from './types'
+import type { Db, Task, Tag, SubTag } from './types'
 import PomodoroBar from './components/PomodoroBar'
 import FloatingMenu from './components/FloatingMenu'
 import BoardView from './components/BoardView'
@@ -15,6 +15,12 @@ import PomodoroPage from './pages/PomodoroPage'
 import Placeholder from './pages/Placeholder'
 import Recent7View from './components/Recent7View'
 import TaskDetailPanel from './components/TaskDetailPanel'
+import { useTaskActions } from './features/tasks/hooks/useTaskActions'
+import { useTaskSelectors } from './features/tasks/hooks/useTaskSelectors'
+import SubTagModal, { PALETTE, H2_PALETTE } from './features/tasks/components/SubTagModal'
+import { usePomodoro } from './features/pomodoro/hooks/usePomodoro'
+import { useHabits } from './features/habits/hooks/useHabits'
+import { useImportantDays } from './features/important-days/hooks/useImportantDays'
 
 type PageKey =
   | 'today' | 'tasks' | 'calendar' | 'habits' | 'stats' | 'focus'
@@ -37,41 +43,11 @@ const PLACEHOLDER_PAGE: Partial<Record<PageKey, string>> = {
   album: '书影清单', travel: '旅游札记', town: '小镇', // chat 占位文案动态用 db.settings.aiName
 }
 
-const PALETTE = ['#3d7ea6', '#5b8c5a', '#c97b4a', '#8e6bb3', '#b85c5c', '#4a9e9e']
-
-// H2 标签 18 色板（新建/编辑标签 modal 用）
-const H2_PALETTE = [
-  '#3d7ea6', '#5b8c5a', '#c97b4a', '#8e6bb3', '#b85c5c', '#4a9e9e',
-  '#d4a017', '#e07a5f', '#6a994e', '#7a6ff0', '#f2a900', '#00a3a3',
-  '#e56db1', '#5c7cfa', '#8d6e63', '#607d8b', '#c2185b', '#7cb342',
-]
-
-// H2 标签 emoji 预设（用户数据，允许 emoji；点击填入输入框，也可手动输入自定义）
-const EMOJI_PRESETS = ['📝', '📞', '💻', '📊', '📚', '🎯', '🧘‍♀️', '💪', '🛒', '✈️', '🎨', '🏠']
-
-interface Pomo {
-  taskId: string
-  title: string
-  mode: 'countdown' | 'stopwatch'
-  startedAt: number
-  totalMin: number
-  endAt: number // stopwatch 为 0
-  remainingMs: number
-  running: boolean
-  swAccum: number // 正计时累计毫秒（暂停不清零）
-}
-
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
-}
-
 export default function App() {
   const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default', aiName: 'Haruto' } })
   const [loaded, setLoaded] = useState(false)
   const [page, setPage] = useState<PageKey>('today')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [pomoTarget, setPomoTarget] = useState<Task | null>(null)
-  const [pomo, setPomo] = useState<Pomo | null>(null)
   const pomoCompletingRef = useRef(false) // 完成互斥锁（防双组件重复记录）
   // L2 清单树选中项
   const [activeListId, setActiveListId] = useState<string>('all')
@@ -122,6 +98,25 @@ export default function App() {
   // 修正3：L2 的 H1/H2 拖拽排序（置顶项固定最前不参与）
   const [l2Drag, setL2Drag] = useState<{ kind: 'h1' | 'h2'; id: string } | null>(null)
   const [l2Over, setL2Over] = useState<{ kind: 'h1' | 'h2'; id: string; pos: 'before' | 'after' } | null>(null)
+
+  // ---------- 数据动作与派生（RF-P1 迁 features/，App 保留路由/L2 UI/布局状态） ----------
+  const {
+    addTask, addTaskWithOptions, addSubtask, updateTask, deleteTask, deleteTaskRecursive,
+    updateTaskTag, updateTaskSection, toggleTaskDone, aggregateSectionDone, addSubtaskInline,
+    togglePinnedToday, setMasterTask, setTaskPriority, setTaskReminder, updateTaskDue, addTaskToSection,
+    toggleChecklistItem, addChecklistItem, updateChecklistItem, deleteChecklistItem,
+    addTag, updateTag, dissolveH1,
+    addSubTag, updateSubTag, deleteSubTag,
+    addSection, insertSectionNextTo, updateSection, moveSection, deleteSection,
+  } = useTaskActions(db, setDb)
+  const {
+    selected, selectedChildren, tagMap, todayStr,
+    todaySessions, todayMinutes, mainTasks, specialTags, normalTags,
+    countOf, minutesOf, focusPool,
+  } = useTaskSelectors(db, selectedId)
+  const { pomo, pomoTarget, setPomoTarget, startPomo, togglePomo, completePomo, abandonPomo } = usePomodoro(db, setDb)
+  const { addHabit, updateHabit, deleteHabit, toggleHabitCheck } = useHabits(db, setDb)
+  const { addImportantDay, updateImportantDay, deleteImportantDay, markPeriod, deletePeriod, reopenPeriod } = useImportantDays(db, setDb)
   const moveH1 = (dragId: string, targetId: string, pos: 'before' | 'after') =>
     setDb((d) => {
       const arr = [...d.tags]
@@ -184,80 +179,7 @@ export default function App() {
   }
 
   // ---------- 任务 ----------
-  const addTask = (title: string, dueDate: string | null, tagId: string | null) =>
-    setDb((d) => ({
-      ...d,
-      tasks: [
-        { id: uid(), title, description: '', dueDate, done: false, createdAt: new Date().toISOString(),
-          tagId, parentTaskId: null, priority: 'none', masterTaskId: null, isPinnedToday: false,
-          sectionId: null, checklistItems: [], taskComments: [] },
-        ...d.tasks,
-      ],
-    }))
 
-  // 带选项新建（今日/最近7天新建行）：优先级 + tagId（H2 的 h1TagId）+ 日期；sectionId null
-  const addTaskWithOptions = (
-    title: string,
-    opts: { dueDate?: string | null; priority?: NonNullable<Task['priority']>; tagId?: string | null }
-  ) =>
-    setDb((d) => ({
-      ...d,
-      tasks: [
-        { id: uid(), title, description: '', dueDate: opts.dueDate ?? null, done: false, createdAt: new Date().toISOString(),
-          tagId: opts.tagId ?? null, parentTaskId: null, priority: opts.priority ?? 'none', masterTaskId: null, isPinnedToday: false,
-          sectionId: null, checklistItems: [], taskComments: [] },
-        ...d.tasks,
-      ],
-    }))
-
-  const addSubtask = (parentId: string, title: string) =>
-    setDb((d) => ({
-      ...d,
-      tasks: [
-        ...d.tasks,
-        { id: uid(), title, description: '', dueDate: null, done: false, createdAt: new Date().toISOString(),
-          tagId: d.tasks.find((t) => t.id === parentId)?.tagId ?? null, parentTaskId: parentId, priority: 'none',
-          sectionId: null, checklistItems: [], taskComments: [] },
-      ],
-    }))
-
-  const updateTask = (id: string, patch: Partial<Task>) =>
-    setDb((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
-
-  const deleteTask = (id: string) =>
-    setDb((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id && t.parentTaskId !== id) }))
-
-  // 看板右键删除：递归删除目标 + 全部子孙（修正2）
-  const deleteTaskRecursive = (id: string) =>
-    setDb((d) => {
-      const ids = new Set<string>([id])
-      let grew = true
-      while (grew) {
-        grew = false
-        for (const t of d.tasks) {
-          if (t.parentTaskId && ids.has(t.parentTaskId) && !ids.has(t.id)) {
-            ids.add(t.id)
-            grew = true
-          }
-        }
-      }
-      return { ...d, tasks: d.tasks.filter((t) => !ids.has(t.id)) }
-    })
-
-  // ---------- 清单（H1）与标签（H2） ----------
-  const addTag = (name: string, color: string) =>
-    setDb((d) => ({ ...d, tags: [...d.tags, { id: uid(), name, color, isSpecial: false }] }))
-
-  const updateTag = (id: string, patch: Partial<Tag>) =>
-    setDb((d) => ({ ...d, tags: d.tags.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
-
-  // 解散 H1：其下所有 H2 变游离（h1TagId=''），H1 本身删除
-  const dissolveH1 = (tagId: string) =>
-    setDb((d) => ({
-      ...d,
-      subTags: d.subTags.map((s) => (s.h1TagId === tagId ? { ...s, h1TagId: '' } : s)),
-      tags: d.tags.filter((t) => t.id !== tagId),
-    }))
 
   const toggleH1Expand = (tagId: string) =>
     setExpandedH1s((prev) => {
@@ -277,343 +199,17 @@ export default function App() {
     setPage('tasks')
   }
 
-  // ---------- H2 标签 ----------
-  const addSubTag = (h1TagId: string, name: string, emoji: string, color: string) =>
-    setDb((d) => ({
-      ...d,
-      subTags: [
-        ...d.subTags,
-        {
-          id: uid(), h1TagId, name, emoji, color,
-          isPinned: false, sharedWithAI: false,
-          order: d.subTags.filter((s) => s.h1TagId === h1TagId).length, // 排在末尾
-        },
-      ],
-    }))
 
-  const updateSubTag = (id: string, patch: Partial<SubTag>) =>
-    setDb((d) => ({ ...d, subTags: d.subTags.map((s) => (s.id === id ? { ...s, ...patch } : s)) }))
 
-  // 删除 H2：连带其下所有 Section；这些 Section 里的任务 sectionId 归 null（任务不删）
-  const deleteSubTag = (id: string) =>
-    setDb((d) => {
-      const doomedSections = new Set(d.sections.filter((s) => s.subTagId === id).map((s) => s.id))
-      return {
-        ...d,
-        subTags: d.subTags.filter((s) => s.id !== id),
-        sections: d.sections.filter((s) => !doomedSections.has(s.id)),
-        tasks: d.tasks.map((t) => (t.sectionId && doomedSections.has(t.sectionId) ? { ...t, sectionId: null } : t)),
-      }
-    })
 
-  // ---------- 看板 Section（Step 4） ----------
-  // 基础创建：order 缺省排到该 H2 末尾
-  const addSection = (subTagId: string, name: string, order?: number): string => {
-    const id = uid()
-    setDb((d) => {
-      const siblings = d.sections.filter((s) => s.subTagId === subTagId)
-      const maxOrder = siblings.length ? Math.max(...siblings.map((s) => s.order)) : -1
-      const ord = order ?? maxOrder + 1
-      return {
-        ...d,
-        sections: [
-          ...d.sections.map((s) => (s.subTagId === subTagId && s.order >= ord ? { ...s, order: s.order + 1 } : s)),
-          { id, subTagId, name, order: ord },
-        ],
-      }
-    })
-    return id
-  }
 
-  // 在锚点 Section 左/右插入「未命名分组」并立即进入重命名
-  // 左侧：新组 order = 锚点 order，锚点及其右侧全部 +1；右侧：新组 order = 锚点 order+1，其右侧全部 +1
-  const insertSectionNextTo = (anchorId: string, side: 'left' | 'right') => {
-    const id = uid()
-    setDb((d) => {
-      const anchor = d.sections.find((s) => s.id === anchorId)
-      if (!anchor) return d
-      const insertOrder = side === 'left' ? anchor.order : anchor.order + 1
-      return {
-        ...d,
-        sections: [
-          ...d.sections.map((s) =>
-            s.subTagId === anchor.subTagId && s.order >= insertOrder ? { ...s, order: s.order + 1 } : s
-          ),
-          { id, subTagId: anchor.subTagId, name: '未命名分组', order: insertOrder },
-        ],
-      }
-    })
-    setRenamingSectionId(id)
-  }
 
-  const updateSection = (id: string, patch: Partial<Section>) =>
-    setDb((d) => ({ ...d, sections: d.sections.map((s) => (s.id === id ? { ...s, ...patch } : s)) }))
 
-  // 移动 Section 到其他 H2：order 排到目标 H2 的末尾（原 H2 剩余组不重排，允许跳号）
-  const moveSection = (id: string, newSubTagId: string) =>
-    setDb((d) => {
-      const targetSecs = d.sections.filter((s) => s.subTagId === newSubTagId)
-      const nextOrder = targetSecs.length ? Math.max(...targetSecs.map((s) => s.order)) + 1 : 0
-      return {
-        ...d,
-        sections: d.sections.map((s) => (s.id === id ? { ...s, subTagId: newSubTagId, order: nextOrder } : s)),
-      }
-    })
 
-  // 删除 Section 及其下所有任务（连带删除，规格明确）
-  const deleteSection = (id: string) =>
-    setDb((d) => ({
-      ...d,
-      sections: d.sections.filter((s) => s.id !== id),
-      tasks: d.tasks.filter((t) => t.sectionId !== id),
-    }))
-
-  // 在指定 Section 下新建任务：tagId 归属到该 Section 所属 H2 的 h1TagId（游离 H2 归 null）
-  const addTaskToSection = (sectionId: string, title: string) =>
-    setDb((d) => {
-      const sec = d.sections.find((s) => s.id === sectionId)
-      const h1TagId = d.subTags.find((st) => st.id === sec?.subTagId)?.h1TagId || null
-      return {
-        ...d,
-        tasks: [
-          {
-            id: uid(), title, description: '', dueDate: null, done: false, createdAt: new Date().toISOString(),
-            tagId: h1TagId, parentTaskId: null, priority: 'none', masterTaskId: null, isPinnedToday: false,
-            sectionId, checklistItems: [], taskComments: [],
-          },
-          ...d.tasks,
-        ],
-      }
-    })
-
-  // ---------- 看板任务卡片（Step 5） ----------
-  // 勾选完成只变灰原位不动；取消完成时清掉聚合标记（下次完成从原位开始，聚合是显式动作）
-  const toggleTaskDone = (id: string) =>
-    setDb((d) => ({
-      ...d,
-      tasks: d.tasks.map((t) =>
-        t.id === id ? { ...t, done: !t.done, ...(t.done ? { aggregated: false } : {}) } : t
-      ),
-    }))
-
-  // 聚合：把该 Section 下所有 done=true 的任务标记进「已完成」折叠区（数据标记，渲染层按此分区）
-  const aggregateSectionDone = (sectionId: string) =>
-    setDb((d) => ({
-      ...d,
-      tasks: d.tasks.map((t) => (t.sectionId === sectionId && t.done ? { ...t, aggregated: true } : t)),
-    }))
-
-  // 看板内加子任务：sectionId/tagId 继承父任务
-  const addSubtaskInline = (parentId: string, title: string) =>
-    setDb((d) => {
-      const p = d.tasks.find((t) => t.id === parentId)
-      return {
-        ...d,
-        tasks: [
-          ...d.tasks,
-          {
-            id: uid(), title, description: '', dueDate: null, done: false, createdAt: new Date().toISOString(),
-            tagId: p?.tagId ?? null, parentTaskId: parentId, priority: 'none', masterTaskId: null, isPinnedToday: false,
-            sectionId: p?.sectionId ?? null, checklistItems: [], taskComments: [],
-          },
-        ],
-      }
-    })
-
-  const updateTaskTag = (id: string, tagId: string | null) => updateTask(id, { tagId })
-
-  // 移动任务到其他 Section：目标任务 + 全部子孙的 sectionId 一并更新，tagId 同步为目标 Section 所属 H1
-  const updateTaskSection = (id: string, sectionId: string | null) =>
-    setDb((d) => {
-      if (!d.tasks.some((t) => t.id === id)) return d
-      const ids = new Set<string>([id])
-      let grew = true
-      while (grew) {
-        grew = false
-        for (const t of d.tasks) {
-          if (t.parentTaskId && ids.has(t.parentTaskId) && !ids.has(t.id)) {
-            ids.add(t.id)
-            grew = true
-          }
-        }
-      }
-      const h1TagId = d.subTags.find((st) => st.id === d.sections.find((s) => s.id === sectionId)?.subTagId)?.h1TagId || null
-      return {
-        ...d,
-        tasks: d.tasks.map((t) => (ids.has(t.id) ? { ...t, sectionId, tagId: sectionId ? h1TagId : null } : t)),
-      }
-    })
-  const togglePinnedToday = (id: string) =>
-    setDb((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, isPinnedToday: !t.isPinnedToday } : t)) }))
-  // 关联主任务（任务2）：时长归并由 Stats.rootTaskIdOf 沿 parentTaskId+masterTaskId 链处理
-  const setMasterTask = (id: string, masterTaskId: string | null) => updateTask(id, { masterTaskId })
-  const setTaskPriority = (id: string, priority: NonNullable<Task['priority']>) => updateTask(id, { priority })
-  const toggleChecklistItem = (taskId: string, itemId: string) =>
-    setDb((d) => ({
-      ...d,
-      tasks: d.tasks.map((t) =>
-        t.id === taskId
-          ? { ...t, checklistItems: t.checklistItems.map((c) => (c.id === itemId ? { ...c, done: !c.done } : c)) }
-          : t
-      ),
-    }))
-
-  // 检查事项 CRUD（Step 5a 悬空弹窗）
-  const addChecklistItem = (taskId: string, text: string) =>
-    setDb((d) => ({
-      ...d,
-      tasks: d.tasks.map((t) =>
-        t.id === taskId
-          ? { ...t, checklistItems: [...t.checklistItems, { id: uid(), text, done: false, remindAt: null }] }
-          : t
-      ),
-    }))
-
-  const updateChecklistItem = (taskId: string, itemId: string, patch: Partial<ChecklistItem>) =>
-    setDb((d) => ({
-      ...d,
-      tasks: d.tasks.map((t) =>
-        t.id === taskId
-          ? { ...t, checklistItems: t.checklistItems.map((c) => (c.id === itemId ? { ...c, ...patch } : c)) }
-          : t
-      ),
-    }))
-
-  const deleteChecklistItem = (taskId: string, itemId: string) =>
-    setDb((d) => ({
-      ...d,
-      tasks: d.tasks.map((t) =>
-        t.id === taskId ? { ...t, checklistItems: t.checklistItems.filter((c) => c.id !== itemId) } : t
-      ),
-    }))
-
-  // 任务级提醒（日期选择器「让 ta 提醒」）：remindAt = 提醒时刻 ISO，remindDaysBefore = 提前天数（0=当天）
-  const setTaskReminder = (id: string, remindAt: string | null, remindDaysBefore: number | null) =>
-    updateTask(id, { remindAt, remindDaysBefore })
-  const updateTaskDue = (id: string, dueDate: string | null) => updateTask(id, { dueDate })
-
-  // ---------- 习惯 ----------
-  const addHabit = (name: string, icon: string) =>
-    setDb((d) => ({ ...d, habits: [...d.habits, { id: uid(), name, icon, monthlyTarget: 20, createdAt: new Date().toISOString() }] }))
-
-  const updateHabit = (id: string, patch: Partial<Pick<Habit, 'name' | 'icon' | 'monthlyTarget'>>) =>
-    setDb((d) => ({ ...d, habits: d.habits.map((h) => (h.id === id ? { ...h, ...patch } : h)) }))
-
-  const deleteHabit = (id: string) =>
-    setDb((d) => ({ ...d, habits: d.habits.filter((h) => h.id !== id), habitRecords: d.habitRecords.filter((r) => r.habitId !== id) }))
-
-  const toggleHabitCheck = (habitId: string, date: string) =>
-    setDb((d) => {
-      const exists = d.habitRecords.some((r) => r.habitId === habitId && r.date === date)
-      return {
-        ...d,
-        habitRecords: exists
-          ? d.habitRecords.filter((r) => !(r.habitId === habitId && r.date === date))
-          : [...d.habitRecords, { id: uid(), habitId, date }],
-      }
-    })
-
-  // ---------- 重要日 & 生理期 ----------
-  const addImportantDay = (day: Omit<ImportantDay, 'id'>) =>
-    setDb((d) => ({ ...d, importantDays: [...d.importantDays, { id: uid(), ...day }] }))
-
-  const updateImportantDay = (id: string, patch: Partial<ImportantDay>) =>
-    setDb((d) => ({ ...d, importantDays: d.importantDays.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
-
-  const deleteImportantDay = (id: string) =>
-    setDb((d) => ({ ...d, importantDays: d.importantDays.filter((x) => x.id !== id) }))
-
-  const markPeriod = (date: string, kind: 'start' | 'end') =>
-    setDb((d) => {
-      if (kind === 'start')
-        return { ...d, periodRecords: [...d.periodRecords, { id: uid(), startDate: date, endDate: null }] }
-      return {
-        ...d,
-        periodRecords: d.periodRecords.map((r) => (!r.endDate && r.startDate < date ? { ...r, endDate: date } : r)),
-      }
-    })
-
-  const deletePeriod = (startDate: string) =>
-    setDb((d) => ({ ...d, periodRecords: d.periodRecords.filter((p) => p.startDate !== startDate) }))
-
-  // 恢复一条已结束的经期记录为进行中（endDate 置 null；生理期右键「恢复」用）
-  const reopenPeriod = (startDate: string) =>
-    setDb((d) => ({
-      ...d,
-      periodRecords: d.periodRecords.map((p) => (p.startDate === startDate ? { ...p, endDate: null } : p)),
-    }))
-
-  // ---------- 番茄钟 ----------
-  const startPomo = (minutes: number, mode: 'countdown' | 'stopwatch' = 'countdown') => {
-    if (!pomoTarget) return
-    setPomo({
-      taskId: pomoTarget.id, title: pomoTarget.title, mode, startedAt: Date.now(),
-      totalMin: minutes, endAt: mode === 'countdown' ? Date.now() + minutes * 60000 : 0,
-      remainingMs: mode === 'countdown' ? minutes * 60000 : 0, running: true, swAccum: 0,
-    })
-  }
-
-  const togglePomo = () =>
-    setPomo((p) => {
-      if (!p) return p
-      if (p.running) {
-        // 暂停：记下剩余/累计
-        return {
-          ...p,
-          running: false,
-          remainingMs: p.mode === 'countdown' ? Math.max(0, p.endAt - Date.now()) : 0,
-          swAccum: p.mode === 'stopwatch' ? p.swAccum + (Date.now() - p.startedAt) : 0,
-        }
-      }
-      // 继续：从暂停点接续（正计时 startedAt 重置为现在，累计增量进 swAccum，避免双倍计数）
-      return {
-        ...p,
-        running: true,
-        endAt: p.mode === 'countdown' ? Date.now() + p.remainingMs : 0,
-        startedAt: Date.now(),
-      }
-    })
-
-  const completePomo = () => {
-    // 互斥锁：浮动条和专注页都可能触发"到点完成"，确保只记一次
-    if (pomoCompletingRef.current || !pomo) return
-    pomoCompletingRef.current = true
-    const minutes = Math.max(1, Math.round((Date.now() - pomo.startedAt) / 60000))
-    setDb((d) => ({
-      ...d,
-      focusSessions: [
-        { id: uid(), taskId: pomo.taskId, startedAt: new Date(pomo.startedAt).toISOString(), minutes },
-        ...d.focusSessions,
-      ],
-    }))
-    setPomo(null)
-    setTimeout(() => { pomoCompletingRef.current = false }, 50)
-  }
 
   // ---------- 派生 ----------
   // AI 显示名兜底：旧库（主进程未重启自愈时）可能还没有 aiName 字段
   const aiName = db.settings.aiName || 'Haruto'
-  const selected = db.tasks.find((t) => t.id === selectedId) ?? null
-  const selectedChildren = selected ? db.tasks.filter((t) => t.parentTaskId === selected.id) : []
-  const tagMap = new Map(db.tags.map((t) => [t.id, t]))
-  // 本地日期（不能用 toISOString：那是 UTC 日期，北京时间 0-8 点会比本地早一天，
-  // 曾导致"今日到期任务进不了专注池"的时区 bug）
-  const now = new Date()
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  // 专注记录的 startedAt 是 ISO(UTC)，也换算到本地日期再比对
-  const localDateOf = (iso: string) => {
-    const d = new Date(iso)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
-  const todaySessions = db.focusSessions.filter((s) => localDateOf(s.startedAt) === todayStr)
-  const todayMinutes = todaySessions.reduce((sum, s) => sum + s.minutes, 0)
-  const mainTasks = db.tasks.filter((t) => !t.parentTaskId)
-  const specialTags = db.tags.filter((t) => t.isSpecial)
-  const normalTags = db.tags.filter((t) => !t.isSpecial)
-  const countOf = (id: string) =>
-    id === 'all' ? mainTasks.filter((t) => !t.done).length
-    : id === 'today' ? mainTasks.filter((t) => !t.done && (t.dueDate === todayStr || t.isPinnedToday)).length
-    : mainTasks.filter((t) => t.tagId === id && !t.done).length
 
   const taskProps = {
     tasks: db.tasks,
@@ -646,7 +242,7 @@ export default function App() {
     },
     onRenameCancel: () => setRenamingSectionId(null),
     onAddTaskToSection: addTaskToSection,
-    onInsertSection: insertSectionNextTo,
+    onInsertSection: (anchorId: string, side: 'left' | 'right') => setRenamingSectionId(insertSectionNextTo(anchorId, side)),
     onMoveSection: moveSection,
     onDeleteSection: deleteSection,
     onCreateSection: (subTagId: string) => setRenamingSectionId(addSection(subTagId, '未命名分组')),
@@ -671,11 +267,6 @@ export default function App() {
   }
 
   // 今日/最近7天列表视图共享 props（Step 6）
-  const minutesOf = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const s of db.focusSessions) m.set(s.taskId, (m.get(s.taskId) ?? 0) + s.minutes)
-    return (id: string) => m.get(id) ?? 0
-  }, [db.focusSessions])
   const listViewProps = {
     tasks: db.tasks,
     tags: db.tags,
@@ -706,13 +297,6 @@ export default function App() {
     onUpdateTask: updateTask,
   }
 
-  // 专注页任务池：符合条件的主任务 + 它们的全部子任务（子任务可独立计时，问题2）
-  const focusMainIds = new Set(
-    mainTasks.filter((t) => !t.done && (!t.dueDate || t.dueDate <= todayStr)).map((t) => t.id)
-  )
-  const focusPool = db.tasks.filter(
-    (t) => !t.done && (focusMainIds.has(t.id) || (t.parentTaskId && focusMainIds.has(t.parentTaskId)))
-  )
 
   // L2 两层树渲染：H1 行（三角+色点+名称+计数+三点）/ H2 行（缩进22px+emoji+名称）
   const sortedSubTagsOf = (h1TagId: string) =>
@@ -1046,7 +630,7 @@ export default function App() {
             pomo={pomo}
             onStart={startPomo}
             onToggle={togglePomo}
-            onAbandon={() => { setPomo(null); setPomoTarget(null) }}
+            onAbandon={abandonPomo}
             onComplete={completePomo}
             todaySessions={todaySessions}
             titleOf={(id) => db.tasks.find((t) => t.id === id)?.title ?? '未知任务'}
@@ -1359,100 +943,10 @@ export default function App() {
           state={pomo}
           onStart={(minutes, mode) => startPomo(minutes, mode)}
           onToggle={togglePomo}
-          onAbandon={() => { setPomo(null); setPomoTarget(null) }}
+          onAbandon={abandonPomo}
           onComplete={completePomo}
         />
       )}
-    </div>
-  )
-}
-
-// H2 标签新建/编辑弹窗：emoji（最多2字符）+ 名称（必填）+ 18色板
-function SubTagModal({ title, initial, onSave, onCancel }: {
-  title: string
-  initial: { emoji: string; name: string; color: string }
-  onSave: (v: { emoji: string; name: string; color: string }) => void
-  onCancel: () => void
-}) {
-  const [emoji, setEmoji] = useState(initial.emoji)
-  const [name, setName] = useState(initial.name)
-  const [color, setColor] = useState(initial.color)
-  const ok = name.trim().length > 0
-  // 按码点切防止截半个字符；含 ZWJ(\u200D) 的组合 emoji（如 🧘‍♀️）是一个整体，保留不切
-  const clampEmoji = (v: string) => (v.includes('\u200D') ? v : Array.from(v).slice(0, 2).join(''))
-  const submit = () => ok && onSave({ emoji: clampEmoji(emoji), name: name.trim(), color })
-
-  return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/30"
-      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
-    >
-      <div className="w-80 rounded-xl bg-white dark:bg-neutral-800 shadow-xl border border-neutral-200 dark:border-neutral-700 p-5 animate-[fadeSlideIn_.15s_ease]">
-        <div className="text-sm font-semibold mb-4">{title}</div>
-        <div className="flex gap-2">
-          <input
-            value={emoji}
-            onChange={(e) => setEmoji(clampEmoji(e.target.value))}
-            placeholder="图标"
-            title="显示在标签名前，可留空"
-            className="w-12 text-center rounded-lg border border-neutral-200 dark:border-neutral-700
-              bg-white dark:bg-neutral-900 px-2 py-2 text-sm outline-none focus:border-haruto-sea"
-          />
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
-            placeholder="标签名称（必填）"
-            className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-700
-              bg-white dark:bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-haruto-sea"
-          />
-        </div>
-        {/* emoji 预设选择器：点击填入输入框（输入框仍可手动输入自定义） */}
-        <div className="mt-2 flex flex-wrap gap-1">
-          {EMOJI_PRESETS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => setEmoji(e)}
-              title="点击选用"
-              className={`w-7 h-7 grid place-items-center rounded-md text-sm transition-colors
-                ${emoji === e
-                  ? 'bg-haruto-sea/15 ring-1 ring-haruto-sea'
-                  : 'hover:bg-black/5 dark:hover:bg-white/10'}`}
-            >
-              {e}
-            </button>
-          ))}
-        </div>
-        <div className="mt-4 mb-2 text-xs text-neutral-500">颜色</div>
-        <div className="grid grid-cols-9 gap-1.5">
-          {H2_PALETTE.map((c) => (
-            <button
-              key={c}
-              onClick={() => setColor(c)}
-              className={`w-5 h-5 rounded-full transition-transform hover:scale-110
-                ${color === c ? 'ring-2 ring-offset-2 ring-neutral-400 dark:ring-offset-neutral-800' : ''}`}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="text-xs px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300"
-          >
-            取消
-          </button>
-          <button
-            onClick={submit}
-            disabled={!ok}
-            className="text-xs px-3 py-1.5 rounded-lg bg-haruto-sea text-white disabled:opacity-40 disabled:cursor-default"
-          >
-            确认
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
