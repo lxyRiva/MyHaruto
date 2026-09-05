@@ -52,7 +52,7 @@
 | RF-P4 | repository+写盘加固+数据文件夹按钮 | 1 | 中 | P3c 提交 |
 | RF-P5 | 数据多文件化（B 方案） | 1 | 中高 | P4 提交+pre-migration 快照 |
 | RF-P6a | 书影/旅游新功能 | 1 | 中 | P5 提交 |
-| RF-P6b | 死代码清扫 | 1 | 低 | P6a 提交 |
+| RF-P6b | 死代码清扫 + 重构收官（v1.0.0 定版） | 1+收官 | 低 | P6a 提交 |
 
 ---
 
@@ -282,9 +282,15 @@ ai/ assets/                  # M5/P6 起创建，本卡不建空目录
 
 ---
 
-## 十一、RF-P6b：死代码清扫
+## 十一、RF-P6b：死代码清扫 + 重构收官
 
 ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEHOLDER_PAGE 两项移除；全库无引用导出清理（逐项列出经审查确认才删）。**可选项**：Modal/ConfirmModal 壳统一（审查评估真实重复后决定，避免为抽而抽）。回滚：reset 到 P6a。
+
+**重构收官动作（P6b 验收通过后由规划 Agent 执行，属定版仪式不属开发 commit）**：
+1. package.json `"version": "0.1.0"` → `"1.0.0"`，提交 `chore: v1.0.0 重构完成（模块化+数据独立化落地）`
+2. 打附注 tag `v1.0.0`，message「重构完成：模块化代码 + 域文件数据 + 全卡验收通过」
+3. 用户授权后 push（master + 两个 tag：v0.1.0 起点 / v1.0.0 终点）
+版本约定：**起点 v0.1.0（已钉 7b4978f），终点 v1.0.0**。
 
 ---
 
@@ -352,3 +358,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 |---|---|
 | v1.0 | 六阶段十卡定稿（P3 拆 a/b/c、TaskDetailPanelLegacy 取消、入口决策拍板、数据文件夹按钮提前 P4、会话边界入 DEV_RULES） |
 | v1.1 | 五补丁：①useTaskSelectors 特例签名 (db, selectedId) 纯派生 ②RF-P4 补 src/global.d.ts 类型声明 ③RF-P5 加载三分支含全新安装 ④RF-P3b SettingsModal 状态归属（showSettings 留 App 受控）⑤RF-P2b 手测补右栏一致性与 L2 收起两条 |
+| v1.2 | RF-P6b 增收官动作：version→1.0.0 + tag v1.0.0（用户定版约定：起点 v0.1.0 / 终点 v1.0.0） |
