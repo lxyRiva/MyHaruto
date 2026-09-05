@@ -3,7 +3,8 @@
 import { useRef, useState } from 'react'
 import type { SubTag } from '../types'
 import { IconCalendar, IconChevron } from './icons'
-import { DatePickerModal, type Priority } from './BoardView'
+import { DatePickerModal } from '../features/tasks/components/DateTimePickers'
+import type { Priority } from '../features/tasks/types'
 
 const FLAGS: { v: Priority; color: string; label: string }[] = [
   { v: 'high', color: '#ef4444', label: '高' },

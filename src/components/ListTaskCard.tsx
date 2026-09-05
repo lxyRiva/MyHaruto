@@ -6,7 +6,9 @@ import { useState } from 'react'
 import type { ChecklistItem, FocusSession, Section, SubTag, Tag, Task } from '../types'
 import { IconChat, IconChevron, IconClock } from './icons'
 import FloatingMenu from './FloatingMenu'
-import { buildTaskContextMenu, DatePickerModal, type Priority } from './BoardView'
+import { buildTaskContextMenu } from '../features/tasks/components/taskMenu'
+import { DatePickerModal } from '../features/tasks/components/DateTimePickers'
+import type { Priority } from '../features/tasks/types'
 
 export interface ListCardCallbacks {
   aiName: string

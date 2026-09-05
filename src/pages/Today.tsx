@@ -7,7 +7,9 @@ import FloatingMenu, { type MenuEntry } from '../components/FloatingMenu'
 import { IconChevron } from '../components/icons'
 import ListTaskCard from '../components/ListTaskCard'
 import NewTaskBar from '../components/NewTaskBar'
-import { buildTaskContextMenu, boardSort, type Priority } from '../components/BoardView'
+import { buildTaskContextMenu } from '../features/tasks/components/taskMenu'
+import { boardSort } from '../features/tasks/utils/boardSort'
+import type { Priority } from '../features/tasks/types'
 
 export function todayStr() {
   const d = new Date()

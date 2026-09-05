@@ -4,7 +4,8 @@ import { useMemo } from 'react'
 import type { SubTag, Task } from '../types'
 import ListTaskCard, { type ListCardCallbacks } from './ListTaskCard'
 import NewTaskBar from './NewTaskBar'
-import { boardSort, type Priority } from './BoardView'
+import { boardSort } from '../features/tasks/utils/boardSort'
+import type { Priority } from '../features/tasks/types'
 
 function localToday(): string {
   const d = new Date()

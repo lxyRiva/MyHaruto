@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import type { ChecklistItem, Section, SubTag, Task } from '../types'
 import { IconChat, IconCheck, IconTasks } from './icons'
-import { ChecklistAddRow, ChecklistRow, RemindPicker, type Priority } from './BoardView'
+import { ChecklistAddRow, ChecklistRow } from '../features/tasks/components/ChecklistRow'
+import { RemindPicker } from '../features/tasks/components/DateTimePickers'
+import type { Priority } from '../features/tasks/types'
 
 export default function TaskDetailPanel({
   task,
