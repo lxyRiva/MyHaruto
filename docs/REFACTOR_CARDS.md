@@ -55,7 +55,8 @@
 | RF-P3a | 全库纯搬移归位（已审计，按审计 diff 落 commit） | 1 | 低 | P2b 提交（38bafa5） |
 | RF-Fix3a | 重要日运行时修复（阻塞 bug，诊断先行） | 1 | 中 | P3a 提交 |
 | RF-P3b | 布局抽取 L1/L2/MainArea | 1 | 中低 | P3a 提交 |
-| RF-P3c | 日期收口+useLocalStorage+L1 排序 | 1 | 中低 | P3b 提交 |
+| RF-Fix3c | 任务系统视图一致性统一（两段 commit，**待用户确认范围放行**） | 2 | 中高 | P3b 提交（66480d2） |
+| RF-P3c | 日期收口+useLocalStorage+L1 排序（**暂缓，排 Fix3c 后**） | 1 | 中低 | Fix3c 提交 |
 | RF-P4 | repository+写盘加固+数据文件夹按钮 | 1 | 中 | P3c 提交 |
 | RF-P5 | 数据多文件化（B 方案） | 1 | 中高 | P4 提交+pre-migration 快照 |
 | RF-P6a | 书影/旅游新功能 | 1 | 中 | P5 提交 |
@@ -473,7 +474,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 - **N3 重要日「已归档折叠区」缺失**（RF-Fix3a 手测发现，dev 报备）：PRD §3.6 有记载但实现从未落地；出卡时拍板——补建功能 or 从 PRD 划掉
 
 【对账待定（疑似与 Fix3 重叠，出卡时逐条核实）】
-- **R1 删除语义双轨**：右栏删除（浅删 deleteTask）vs 右键删除（递归删）→ 统一为递归+确认
+- ~~R1 删除语义双轨~~：**转 RF-Fix3c 吸收**（分叉#6，删除语义 utils 单点化+确认统一）
 - **R2 勾主任务不级联**：⚠️ Fix3 规则1' 已修（a744503）；若用户所指为残留问题，出卡前补现象描述
 - **R3 done 沉底**：Fix3 已做「同日期同优先级」内沉底；若残留现象是「同日期跨优先级不沉底」，需拍板 done 维度是否提到优先级之前
 
@@ -503,6 +504,35 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 
 > **验收记录（v1.10，2026-09-06）**：**零代码改动，无 commit 产物**——全新启动后重要日功能恢复，真根因=环境态（HMR 坏窗/双实例/localStorage 回滚族，排障经验①族），卡内取证（图片字符串未变、全库仅一处 public 引用）直接缩小了排查面。三条排障经验已登记 **DEV_RULES §9**（禁强杀/禁双开/dev-prod origin 隔离+诡异症状先全新启动）。诊断先行卡设计按预期生效：先排除环境，代码零背锅。P3a 85f6d68 维持，解锁 P3b。
 > **手测项勘误（v1.11）**：本卡手测清单中「归档折叠」经 dev 报备确认**无对应功能区**（PRD §3.6 记载 vs 实现缺失）→ 转 Fix4 池 N3，出卡时拍板补建或划 PRD。
+
+---
+
+## 十八、RF-Fix3c：任务系统视图一致性统一（细目卡，P3b 后 / P3c 前，两段 commit）
+
+> **⚠️ 待用户确认范围后放行。** 背景：深度比对发现横板链（Today/Recent7View/Tasks/ListTaskCard/DoneFoldSection）与看板链（BoardView/BoardColumn/TaskCard/悬空弹窗）六组分叉（规划层 grep 已证实聚合判定散布 7 文件、Popover 内联 TaskCard、删除双轨并存）。本卡根治：业务规则 utils 单点化 + 卡片基元统一 + 详情容器等价 + 新建对齐。配套 **DEV_RULES §10 视图一致性铁律**（v1.13 已入库）。
+
+**步骤 0 盘查（交付报告附）**：六组分叉逐一 grep 定位，产出「文件+行号」分叉对照表（规划层已知锚点：聚合判定散布 BoardColumn/Recent7View/ListTaskCard/useTaskActions/Tasks/Today/tree.ts 共 7 文件；Popover 内联于 TaskCard（activePopupId 机制）；DoneFoldSection 导出自 ListTaskCard；deleteTask/deleteTaskRecursive 并存 useTaskActions L48/L52；boardSort 消费方=Recent7View/BoardView/Today/BoardColumn）
+
+**第一段 commit（utils 单点化，行为零变化）**：
+1. **taskTree.ts**（= tree.ts 升级更名，**非第二份**）：保留 rootOf/isRootAggregated；新增 treeOf(tasks,id)/isTreeComplete(tasks,rootId)/collapsedOf(tasks)（折叠区成员判定唯一实现）。useTaskActions 规则 1'/2/4/5' 的内联遍历改调纯函数；DoneFoldSection 与 BoardColumn 折叠过滤同源调用
+2. **taskDelete.ts**（新建）：collectTreeIds(tasks,id)（目标+全部子孙）唯一实现；useTaskActions 的 deleteTask/deleteTaskRecursive 合并为 **deleteTaskTree**（内部走 collectTreeIds）；删除确认 modal 抽共享组件（右键路径已有确认改接同一 modal；右栏路径本段只接线、行为变化放第二段）
+3. **taskMeta.ts**（新建）：buildTaskMeta(task,{minutesOf,tagMap}) → {dateText,priorityFlag,tagBadge,alarmIcon,minutes,checklistProgress} 唯一组装；ListTaskCard/TaskCard meta 行改消费
+4. **taskSort.ts**（= boardSort.ts 升级更名，含 Fix3 done 沉底）；全消费方改道；盘查若发现看板链第二套排序则归一
+5. **checklistDefaultMode(task)** 提取（入 taskMeta.ts）：检查事项默认视图判断唯一实现
+**验收**：审查 grep——每个共享函数全库唯一定义点；tsc/build；行为零变化（Fix1-3 矩阵抽查）
+
+**第二段 commit（组件统一，含三处行为增强）**：
+6. **TaskCardBase.tsx**（新建，≤300 行、props ≤12、纯展示零业务）：勾选框+标题+meta 行（吃 taskMeta）+子任务折叠递归（吃 taskTree）；ListTaskCard 与 TaskCard 重构为薄壳——**视图差异（点击=右栏选中 vs 悬空弹窗、选中态样式、菜单接线）留在消费层，禁止塞进基元**
+7. **TaskPopover 功能等价**：TaskDetailPanel 拆出 TaskDetailContent（内容区组件），右栏与悬空弹窗同渲染（一处实现两处布局；弹窗加宽度/滚动约束）
+8. **看板新建对齐 NewTaskBar**：补日期/优先级/标签（NewTaskBar 抽字段区组件供列内紧凑变体复用；sectionId 归属语义保持）
+9. **删除语义统一（消费段）**：右栏删除按钮改 deleteTaskTree+确认；右键菜单接同一 modal
+**验收（用户定稿）**：双链同操作矩阵——勾选/取消/聚合/取消聚合/删除/新建/折叠 × 横板+看板逐项对照；共享函数 grep 唯一性复验；tsc/build/dev 手测
+
+**行为变化声明（方向已拍板，手测显式验证）**：看板新建补三字段｜右栏删除改递归+确认｜Popover 功能等价化
+**允许触碰**：features/tasks/{utils,components}/**、hooks/useTaskActions.ts、app/layout/MainArea.tsx（接线）、App.tsx（接线）、相关 docs
+**禁止**：其他 features 域、electron/*、数据结构、vite.config.ts
+**commit**：`refactor(Fix3c-1): 任务业务规则 utils 单点化` → `refactor(Fix3c-2): TaskCardBase/Popover/NewTaskBar 统一`
+**回滚**：Fix3c-1 → P3b（66480d2）；Fix3c-2 → Fix3c-1
 
 ---
 
@@ -581,3 +611,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.10 | Fix3a 验收：**零代码改动**（真根因=环境态 HMR/双实例/localStorage 回滚族），三条排障经验入 DEV_RULES §9；P3b 解锁 |
 | v1.11 | Fix3a 手测项勘误：「归档折叠」无对应功能区（PRD §3.6 vs 实现缺失）→ Fix4 池新增 N3；Fix4 池现 10 项 |
 | v1.12 | P3b 验收记录（三报告通过，App 316 行，commit 66480d2，STRUCTURE 重写入 commit）；审查裁定备案：L2 UI 态切页重置=合理行为变化；P6b 追加登记 3 项（死解构/超 50 行函数/类型偏松） |
+| v1.13 | **DEV_RULES §10 视图一致性铁律**（五条款）；新增 **RF-Fix3c 细目卡**（任务系统六组分叉收口：taskTree/taskDelete/taskMeta/taskSort 单点化+TaskCardBase+Popover 等价+看板新建对齐，两段 commit，**待用户确认范围放行**，P3c 暂缓让位）；Fix4 池 R1 转 Fix3c |
