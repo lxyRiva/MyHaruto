@@ -29,6 +29,8 @@
 2. **落位锁**（测试执行）：逐条跑卡内核对表——写了「新建」的文件必须存在且行数达标，写了「删除」的文件必须不存在，grep 计数命中。
 3. **Scope 锁**（审查执行）：`git diff --stat <上卡锚>..<本卡>` 文件清单 ⊆ 卡内允许清单，越界打回；搬移 commit 的 diff 零逻辑变更。
 
+**测试交接（2026-09-06 用户定）**：RF-P1/P2a 过渡期由规划层代行机械核验；**RF-Fix1 为最后一卡代行，RF-P2b 起所有测试环节由独立测试会话执行**，规划层不再代跑。
+
 **责任矩阵**：
 
 | 角色 | 职责 |
@@ -46,14 +48,16 @@
 |---|---|---|---|---|
 | RF-P1 | App 抽 4 hook+1 选择器+SubTagModal；建 DEV_RULES/会话边界 | 1 | 低 | tag `refactor-start` |
 | RF-P2a | BoardView 拆分（纯搬移） | 1 | 低 | P1 提交 |
-| RF-P2b | 全部页现代化+右栏统一+删旧面板 | 1 | 中 | P2a 提交 |
+| RF-Fix1 | 聚合语义树化+aiName 全局同步（两 bug 修复） | 1 | 中 | P2a 提交（0754339） |
+| RF-P2b | 全部页现代化+右栏统一+删旧面板 | 1 | 中 | Fix1 提交 |
 | RF-P3a | 全库纯搬移归位 | 1 | 低 | P2b 提交 |
 | RF-P3b | 布局抽取 L1/L2/MainArea | 1 | 中低 | P3a 提交 |
 | RF-P3c | 日期收口+useLocalStorage+L1 排序 | 1 | 中低 | P3b 提交 |
 | RF-P4 | repository+写盘加固+数据文件夹按钮 | 1 | 中 | P3c 提交 |
 | RF-P5 | 数据多文件化（B 方案） | 1 | 中高 | P4 提交+pre-migration 快照 |
 | RF-P6a | 书影/旅游新功能 | 1 | 中 | P5 提交 |
-| RF-P6b | 死代码清扫 + 重构收官（v1.0.0 定版） | 1+收官 | 低 | P6a 提交 |
+| RF-P6b | 死代码清扫 | 1 | 低 | P6a 提交 |
+| RF-P7 | 设置中心四分区（前置门：细案待出） | 1 | 中 | P6b 提交 |
 
 ---
 
@@ -120,6 +124,8 @@ features/tasks/components/BoardView.tsx        ← BoardCallbacks + default，�
 **测试验收**：tsc/build 过；落位核对（旧文件不存在、新文件 ≤500、`grep "from './BoardView'" src/`=0）。
 **用户手测**：看板视图 A/B 全操作回归。
 **回滚**：`git reset --hard <P1提交>`。
+
+> **验收记录（v1.4，2026-09-06）**：机械门全绿（变更范围 M×6+D×1+新增×8 零越界、8 文件行数 2/15/285/183/115/475/192/278、6 依赖方 14 行增行全为 import、体量对账 1499→1545、tsc PASS）。四项报备裁定全接受：①taskMenu.ts→tsx（MenuEntry.label 含 JSX，技术必然）②localToday/pad2 转 export（拆分后多文件共用，最小导出）③BoardColumn 二拆（卡预案触发）④features→src/components 过渡态（P3a 覆盖）。commit **0754339**。用户验收发现两 bug（聚合语义/aiName 硬编码）→ 立 **RF-Fix1** 修复，P2b 等 Fix1 解锁。
 
 ---
 
@@ -289,11 +295,71 @@ ai/ assets/                  # M5/P6 起创建，本卡不建空目录
 
 ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEHOLDER_PAGE 两项移除；全库无引用导出清理（逐项列出经审查确认才删）。**可选项**：Modal/ConfirmModal 壳统一（审查评估真实重复后决定，避免为抽而抽）。回滚：reset 到 P6a。
 
-**重构收官动作（P6b 验收通过后由规划 Agent 执行，属定版仪式不属开发 commit）**：
+**重构收官动作（RF-P7 设置中心验收通过后由规划 Agent 执行，属定版仪式不属开发 commit；原挂 P6b 后，2026-09-06 因 P7 登记移位）**：
 1. package.json `"version": "0.1.0"` → `"1.0.0"`，提交 `chore: v1.0.0 重构完成（模块化+数据独立化落地）`
 2. 打附注 tag `v1.0.0`，message「重构完成：模块化代码 + 域文件数据 + 全卡验收通过」
 3. 用户授权后 push（master + 两个 tag：v0.1.0 起点 / v1.0.0 终点）
 版本约定：**起点 v0.1.0（已钉 7b4978f），终点 v1.0.0**。
+
+---
+
+## 十二、RF-Fix1：聚合语义树化 + aiName 全局同步（修复卡，插 P2a 后 / P2b 前）
+
+> **给开发 Agent**。行为变化卡（非搬移），源自 P2a 验收两 bug。语义第 4/6 条为用户拍板定稿，不得再议。
+
+**前置盘查（步骤 0，两份清单随交付报告上交，先盘查后动手）**：
+- `grep -rn "aggregated\|aggregateSectionDone" src/` → 全部读写点清单（已知锚点：useTaskActions.toggleTaskDone/aggregateSectionDone、BoardColumn 折叠区过滤、分区菜单「聚合」项、TaskCard/BoardView 渲染）
+- `grep -rn "'Haruto'" src/ electron/` → 硬编码点分类（A 类默认兜底 / B 类显示串）
+
+**修复 A：任务聚合语义（树化）**
+
+语义定义：树 = 主任务 + 全部子孙（parentTaskId 链）；**折叠区成员判定唯一依据 = 根任务的 aggregated**（渲染/逻辑沿 parentTaskId 上溯取根标志；历史数据散落在子任务上的 aggregated 字段一律无视——不做数据修复、不改 electron 数据结构）。
+
+规则（已拍板）：
+1. 勾选主任务为完成 → 级联全部子孙 done=true + 根 aggregated=true，整树入折叠区
+2. 主任务已完成且全部子孙已完成（任意路径达成）→ 根 aggregated=true 自动聚合（含无子孙的孤立主任务）
+3. 子任务勾选完成：不触发聚合，除非恰好达成规则 2
+4. 折叠区取消主任务勾选 → 根 done=false + aggregated=false，整树回待办区；**子任务 done 保留**（灰显跟随回待办区）【拍板：保留完成态】
+5. 折叠区内取消任一子孙勾选 → 整树回待办区（根 aggregated=false），各 done 态保持现状
+6. 分区右键「聚合已完成」菜单项**保留**，语义不变（该分区 done 未 aggregated 的任务标入折叠区），可反复使用；已聚合任务呆在折叠区不受影响【拍板：保留，不断聚合】。注意：手动聚合单个 done 子任务时其主任务未完成——子任务单独入折叠区（现状语义），不拉扯主任务
+7. 回区后重新达成规则 1/2 → 整树再次自动聚合（聚合⇄回区可循环）
+
+实现锚点：useTaskActions.toggleTaskDone 重写（树级联 + 规则 2/5 判定，沿 parentTaskId 上溯找根）；aggregateSectionDone **保留不动**；BoardColumn 折叠过滤改根判定；TaskCard/BoardView 如读自身 aggregated 改根判定；「聚合」菜单项不动。
+
+**修复 B：aiName 全局同步**
+- A 类（默认值兜底收敛）：types.ts 初始 state、electron/main.js defaultDb、App 的 `|| 'Haruto'` → 新建 `src/shared/constants.ts` 导出 `DEFAULT_AI_NAME = 'Haruto'`，全部兜底引用它；**全库字面量只许此一处**
+- B 类（显示串改读 settings）：盘查清单逐处改为经 props/settings 链读 db.settings.aiName（已知位置：L1 悬浮 title、占位页、任务详情留言区、生理期 AI 入口、聊天页占位、设置弹窗默认值等，以盘查为准）；组件拿不到的补穿线
+- 验收：`grep -rn "'Haruto'" src/ electron/` → 仅 constants.ts 一处；手测：改 AI 名后六类显示位全部跟随，重启保持
+
+**三关**：tsc 零错误 → npm run build → npm run dev 按下方矩阵逐条自测。
+**行为测试矩阵（交付报告必附逐条结果）**：
+1. 主+2 子：勾主 → 全灰整树入折叠区
+2. 折叠区取消主勾 → 整树回待办，子任务仍灰
+3. 折叠区取消一个子任务勾 → 整树回待办
+4. 逐个勾完子任务+主 → 最后一勾自动整树入折叠区
+5. 树未全完成时不自动聚合；手动「聚合」可把 done 子任务单独折叠，反复可用且已折叠者不动
+6. 回区后再勾完 → 再次自动聚合（循环验证）
+7. 改 AI 名 → 六类显示位全部跟随，重启保持
+8. 今日/最近7天/全部页勾选无回归；统计时长归并无回归
+
+**允许触碰**：useTaskActions.ts、BoardColumn.tsx、TaskCard.tsx、BoardView.tsx、taskMenu.tsx、ListTaskCard.tsx、Today.tsx、Recent7View.tsx、TaskDetailPanel.tsx、App.tsx、src/shared/constants.ts（新建）、src/types.ts、electron/main.js（仅 A 类兜底一处）、相关 docs
+**禁止**：数据结构变更、vite.config.ts、其余页面
+**commit**：`fix(RF-Fix1): 聚合语义树化+aiName 全局同步`
+**回滚**：`git reset --hard 0754339`
+
+---
+
+## 十三、RF-P7：设置中心（骨架登记，排 P6b 后、收官前）
+
+> **⚠️ 前置门：开工前规划层出细案（数据源/交互/UI 规格），用户确认后才开发。** 本卡为需求登记防遗失。
+
+四分区需求（用户 2026-09-06 口述登记）：
+1. **日期与时间**：月历显示农历（solarlunar 已有依赖）；一周开始于周一；显示法定节假日+调休。⚠️ 开放点：节假日调休数据源需定（离线内置年度 JSON vs 其他），细案拍板。
+2. **外观**：留出 UI 皮肤切换接口（settings.skinId 字段已存在）。
+3. **桌面部件**：留出桌面小部件接口（Electron 特性，本期只留口不做实现）。
+4. **API 接入**：多模型 API Key 配置入口（智谱/DeepSeek/Kimi/自定义）。⚠️ 本地明文存储需在细案声明（单机单人可接受）；是 M5 AI 接入的直接前置。
+
+**验收线**：待细案定稿后补。**回滚**：reset 到 P6b 提交。
 
 ---
 
@@ -363,3 +429,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.1 | 五补丁：①useTaskSelectors 特例签名 (db, selectedId) 纯派生 ②RF-P4 补 src/global.d.ts 类型声明 ③RF-P5 加载三分支含全新安装 ④RF-P3b SettingsModal 状态归属（showSettings 留 App 受控）⑤RF-P2b 手测补右栏一致性与 L2 收起两条 |
 | v1.2 | RF-P6b 增收官动作：version→1.0.0 + tag v1.0.0（用户定版约定：起点 v0.1.0 / 终点 v1.0.0） |
 | v1.3 | RF-P1 验收裁定（952≤1000 达标，归因规划层行数预算误差）；RF-P3b 验收线改为 ≤550+组成校验；三道锁升级四道锁（新增基线锁：派发前规划层核对基线与行数预算） |
+| v1.4 | 新增 **RF-Fix1**（聚合语义树化+aiName 同步，插 P2a 后，规则 4/6 用户拍板）与 **RF-P7 设置中心**（登记卡，P6b 后）；收官动作移至 P7 后；总纲补测试交接规则；P2a 验收记录+四项报备备案 |
