@@ -51,7 +51,7 @@
 | RF-Fix1 | 聚合语义树化+aiName 全局同步（两 bug 修复） | 1 | 中 | P2a 提交（0754339） |
 | RF-Fix2 | 横板已完成折叠区+子任务计时显示+死声明清理 | 1 | 中 | Fix1 提交（2044e3f） |
 | RF-Fix3 | 聚合取消级联+折叠区空心框+done 沉底 | 1 | 中 | Fix2 提交（4f83c9a） |
-| RF-P2b | 全部页现代化+右栏统一+删旧面板 | 1 | 中 | Fix3 提交 |
+| RF-P2b | 右栏统一+Today死代码+NewTaskBar（范围缩减版） | 1 | 中 | Fix3 提交（a744503） |
 | RF-P3a | 全库纯搬移归位 | 1 | 低 | P2b 提交 |
 | RF-P3b | 布局抽取 L1/L2/MainArea | 1 | 中低 | P3a 提交 |
 | RF-P3c | 日期收口+useLocalStorage+L1 排序 | 1 | 中低 | P3b 提交 |
@@ -59,7 +59,8 @@
 | RF-P5 | 数据多文件化（B 方案） | 1 | 中高 | P4 提交+pre-migration 快照 |
 | RF-P6a | 书影/旅游新功能 | 1 | 中 | P5 提交 |
 | RF-P6b | 死代码清扫 | 1 | 低 | P6a 提交 |
-| RF-P7 | 设置中心四分区（前置门：细案待出） | 1 | 中 | P6b 提交 |
+| RF-Fix4 | 验收 bug 批量修复（登记槽，清单待用户交） | 1 | 中 | P6b 提交 |
+| RF-P7 | 设置中心四分区（前置门：细案待出） | 1 | 中 | Fix4 提交 |
 
 ---
 
@@ -147,6 +148,7 @@ App.tsx                       ← 删旧右栏 B（1128-1228 行整块）；右�
 **禁止**：新建任何 Legacy 文件。
 
 > **v1.6 范围更新**：Tasks.tsx 换 ListTaskCard 渲染已由 RF-Fix2 提前完成（收尾轮遗留③清账）。本卡剩余=①右栏统一：删旧内联面板 B，全部页切 TaskDetailPanel（功能映射表复核，P2b 原表仍有效）②Today.tsx TaskNode 死代码删除（Fix2 后已无引用）③Tasks 新建行换 NewTaskBar。
+> **v1.7 硬性补注**：右栏（及一切新接线）的子任务勾选**必须走 toggleTaskDone**（树语义统一入口），禁止直用 updateTask 改 done——旧面板 B 的子任务 checkbox 现走 updateTask 直改，统一时必须改道，否则 Fix3"取消子勾→根 done=false"联动不生效。todayStr 本轮保留在 Today.tsx（P3c 收口）。
 
 **功能映射表**（开发交付物，验收逐项打勾，一项不落）：
 
@@ -161,7 +163,7 @@ App.tsx                       ← 删旧右栏 B（1128-1228 行整块）；右�
 | 🍅开始专注 / 🗑删除 底部按钮 | TDP 新增动作行 |
 | 收起 × | 已有 |
 
-**测试验收**：tsc/build；`grep "TaskNode|PRIORITY_DOT|descendantIds" src/pages/Today.tsx`=0；`grep "Legacy" src/`=0；App.tsx ≤800。
+**测试验收**：tsc/build；`grep "TaskNode|PRIORITY_DOT|descendantIds" src/pages/Today.tsx`=0；`grep "Legacy" src/`=0；App.tsx ≤850（v1.7 基线锁重算：Fix3 后实测 937 行，删旧面板 B/taskProps 后预计 ~830，原 ≤800 系旧基线产物）。
 **用户手测重点**：
 - 全部页右栏按映射表逐项点验（子任务勾选/添加/子任务🍅、开始专注、删除）
 - 全部页选中任务→右栏出现；点 × 关闭；切换另一任务右栏内容跟随——三项行为与今日页完全一致
@@ -445,6 +447,17 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 **commit**：`fix(RF-Fix3): 聚合取消级联+折叠区空心框+done 沉底`
 **回滚**：`git reset --hard 4f83c9a`
 
+> **验收记录（v1.7，2026-09-06）**：用户手测通过；规划层尽调核验（diff 逐段目检=卡语义逐条对应、tsc PASS、范围 3 文件零越界）后代提交。commit **a744503**（3 文件 +23/−23）。渲染侧"空心框"零改动（Fix2 渲染链本就以自身 done 渲染，卡预案命中）。
+
+---
+
+## 十六、RF-Fix4：验收 bug 批量修复（登记槽，P6b 后 / P7 与收官前）
+
+> **⚠️ 需求登记卡（2026-09-06 用户定策略）**：重构推进期间发现的功能 bug 不再即时立 Fix 卡，由用户收集，**P6b 完成后统一交规划层出 RF-Fix4 细目卡修复**；修完才进 P7/收官。**不混入 P6b**（P6b 是机械清扫+搬移审计性质卡，混功能修复破坏一卡一 commit 与审查方法学——规划层异议，用户已认此策略方向）。
+- 输入：用户的 bug 清单（现象+复现步骤）
+- 流程：规划出细目卡（逐 bug：根因/修法/验收）→ 开发修复 → 测试会话回归 → 用户验收 → 单 commit `fix(RF-Fix4): <清单摘要>`
+- 回滚：reset 到 P6b 提交
+
 ---
 
 ## 附录 A：docs/DEV_RULES.md 全文（RF-P1 创建，含 §8）
@@ -516,3 +529,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.4 | 新增 **RF-Fix1**（聚合语义树化+aiName 同步，插 P2a 后，规则 4/6 用户拍板）与 **RF-P7 设置中心**（登记卡，P6b 后）；收官动作移至 P7 后；总纲补测试交接规则；P2a 验收记录+四项报备备案 |
 | v1.5 | Fix1 验收记录（矩阵 8/8+回归修复+electron 字面量裁定 grep=3 接受，commit 2044e3f）；新增 **RF-Fix2**（横板已完成折叠区+子任务计时显示+死声明清理，插 Fix1 后）；P2a 补记缩进差异已消除；P6b 登记过度导出 4 处+usePomodoro import 风格；P3c 盘点范围补 Recent7View/Today 日期函数（审查报告全项闭环） |
 | v1.6 | Fix2 验收记录（8/8 PASS+Tasks.tsx 渲染提前落地备案，commit 4f83c9a）；新增 **RF-Fix3**（聚合取消级联+折叠区空心框+done 沉底——**修订 Fix1 规则 1**，用户拍板语义演进）；P2b 范围缩减注记（遗留③已清账）；开工包精益化规则（不重复指读已读文件） |
+| v1.7 | Fix3 验收记录（用户手测通过+规划层尽调代提交，commit a744503）；新增 **RF-Fix4 登记槽**（验收 bug 批量修复，P6b 后/收官前，不混 P6b）；P2b 验收线 ≤800→≤850（基线锁重算）+右栏子任务勾选必须走 toggleTaskDone 硬性补注；**流程简化（用户定）**：bug 攒批后置、Fix3 起免独立交付报告评审轮，直接测试会话+手测+授权 commit |
