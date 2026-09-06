@@ -49,7 +49,8 @@
 | RF-P1 | App 抽 4 hook+1 选择器+SubTagModal；建 DEV_RULES/会话边界 | 1 | 低 | tag `refactor-start` |
 | RF-P2a | BoardView 拆分（纯搬移） | 1 | 低 | P1 提交 |
 | RF-Fix1 | 聚合语义树化+aiName 全局同步（两 bug 修复） | 1 | 中 | P2a 提交（0754339） |
-| RF-P2b | 全部页现代化+右栏统一+删旧面板 | 1 | 中 | Fix1 提交 |
+| RF-Fix2 | 横板已完成折叠区+子任务计时显示+死声明清理 | 1 | 中 | Fix1 提交（2044e3f） |
+| RF-P2b | 全部页现代化+右栏统一+删旧面板 | 1 | 中 | Fix2 提交 |
 | RF-P3a | 全库纯搬移归位 | 1 | 低 | P2b 提交 |
 | RF-P3b | 布局抽取 L1/L2/MainArea | 1 | 中低 | P3a 提交 |
 | RF-P3c | 日期收口+useLocalStorage+L1 排序 | 1 | 中低 | P3b 提交 |
@@ -125,7 +126,7 @@ features/tasks/components/BoardView.tsx        ← BoardCallbacks + default，�
 **用户手测**：看板视图 A/B 全操作回归。
 **回滚**：`git reset --hard <P1提交>`。
 
-> **验收记录（v1.4，2026-09-06）**：机械门全绿（变更范围 M×6+D×1+新增×8 零越界、8 文件行数 2/15/285/183/115/475/192/278、6 依赖方 14 行增行全为 import、体量对账 1499→1545、tsc PASS）。四项报备裁定全接受：①taskMenu.ts→tsx（MenuEntry.label 含 JSX，技术必然）②localToday/pad2 转 export（拆分后多文件共用，最小导出）③BoardColumn 二拆（卡预案触发）④features→src/components 过渡态（P3a 覆盖）。commit **0754339**。用户验收发现两 bug（聚合语义/aiName 硬编码）→ 立 **RF-Fix1** 修复，P2b 等 Fix1 解锁。
+> **验收记录（v1.4，2026-09-06）**：机械门全绿（变更范围 M×6+D×1+新增×8 零越界、8 文件行数 2/15/285/183/115/475/192/278、6 依赖方 14 行增行全为 import、体量对账 1499→1545、tsc PASS）。四项报备裁定全接受：①taskMenu.ts→tsx（MenuEntry.label 含 JSX，技术必然）②localToday/pad2 转 export（拆分后多文件共用，最小导出）③BoardColumn 二拆（卡预案触发）④features→src/components 过渡态（P3a 覆盖）。commit **0754339**。用户验收发现两 bug（聚合语义/aiName 硬编码）→ 立 **RF-Fix1** 修复，P2b 等 Fix1 解锁。审查专项1结论（v1.5 补记）：**缩进差异已于 commit 前消除**——提交版不存在纯缩进差异块（多重集比对 1436=1436 全等），后人无需按报备寻找。
 
 ---
 
@@ -214,7 +215,7 @@ app/layout/SettingsModal.tsx      ← 设置弹窗迁出。状态归属：showSe
 ## 七、RF-P3c：日期收口 + useLocalStorage + L1 排序
 
 **步骤**：
-1. `shared/utils/date.ts`：先 grep 盘点重复实现（todayStr/localDateOf/addDaysStr/nextWeekdayStr，**单引号与模板串两种 localStorage 写法都要查**），只收口重复、行为逐字节一致（时区注释原样随迁）。
+1. `shared/utils/date.ts`：先 grep 盘点重复实现（todayStr/localDateOf/addDaysStr/nextWeekdayStr，**单引号与模板串两种 localStorage 写法都要查**；**盘点范围含 Recent7View.tsx 的本地 localToday() 与 Today.tsx 的 todayStr()——审查登记 v1.5**），只收口重复、行为逐字节一致（时区注释原样随迁）。
 2. `shared/hooks/useLocalStorage.ts`：detailWidth 切换接入；其余 mh-* 存量键登记不迁移（动到时顺手）。
 3. **L1 排序**（遗留④，产品决策已拍板）：右键菜单 上移/下移/恢复默认；顺序存 `mh-l1-order`（PageKey 数组）；chat/town 锚底不可动；**album/travel 去 disabled 改置灰——左键进占位页、右键参与排序**（P6 接真页面）。
 
@@ -293,7 +294,7 @@ ai/ assets/                  # M5/P6 起创建，本卡不建空目录
 
 ## 十一、RF-P6b：死代码清扫 + 重构收官
 
-ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEHOLDER_PAGE 两项移除；全库无引用导出清理（逐项列出经审查确认才删）。**可选项**：Modal/ConfirmModal 壳统一（审查评估真实重复后决定，避免为抽而抽）。回滚：reset 到 P6a。
+ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEHOLDER_PAGE 两项移除；全库无引用导出清理（逐项列出经审查确认才删）。**审查登记（v1.5）**：过度导出 4 处——taskMenu.tsx 的 PRIO_META/prioDot/withCheck（仅文件内使用）与 SubTagModal.tsx 的 EMOJI_PRESETS；usePomodoro.ts:21 内联 import 类型改顶部 import type。**可选项**：Modal/ConfirmModal 壳统一（审查评估真实重复后决定，避免为抽而抽）。回滚：reset 到 P6a。
 
 **重构收官动作（RF-P7 设置中心验收通过后由规划 Agent 执行，属定版仪式不属开发 commit；原挂 P6b 后，2026-09-06 因 P7 登记移位）**：
 1. package.json `"version": "0.1.0"` → `"1.0.0"`，提交 `chore: v1.0.0 重构完成（模块化+数据独立化落地）`
@@ -347,6 +348,8 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 **commit**：`fix(RF-Fix1): 聚合语义树化+aiName 全局同步`
 **回滚**：`git reset --hard 0754339`
 
+> **验收记录（v1.5，2026-09-06）**：行为矩阵 8/8 PASS（UI 实测）；验收期发现回归 1 个（折叠区父卡无法展开）当场修复（parentFolded 分区标志）。**electron 字面量裁定（规划层）**：grep `'Haruto'` = 3 处（TS 权威 constants.ts 1 + electron/main.js 兜底 2 带同步锚注释）**接受**——CJS 无法 require TS，建桥文件属零收益复杂度；显示链全走 App 兜底，行为不受影响，DEV_RULES"显示名不硬编码"目标已达成。commit **2044e3f**（8 文件 +123/−22）。
+
 ---
 
 ## 十三、RF-P7：设置中心（骨架登记，排 P6b 后、收官前）
@@ -360,6 +363,46 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 4. **API 接入**：多模型 API Key 配置入口（智谱/DeepSeek/Kimi/自定义）。⚠️ 本地明文存储需在细案声明（单机单人可接受）；是 M5 AI 接入的直接前置。
 
 **验收线**：待细案定稿后补。**回滚**：reset 到 P6b 提交。
+
+---
+
+## 十四、RF-Fix2：横板已完成折叠区 + 子任务计时显示 + 死声明清理（修复卡，Fix1 后 / P2b 前）
+
+> **给开发 Agent**。源自 Fix1 后手测两 bug + 审查警告 1。行为变化卡。**规划层最后一代行机械核验到此为止无误——本卡起测试仍归规划层代行（P2b 才交接测试会话），但交付报告须附逐条自测证据。**
+
+**修复 A（Bug1）：横板页面「已完成」折叠区**
+- 症状根因（用户实测+定因）：Fix1 后主任务完成置根 aggregated=true，横板页面（今日/最近7天/全部）无折叠渲染，聚合任务被过滤消失。
+- 目标行为（用户拍板）：
+  * 四横板视图（Today/Recent7View/Tasks 及 ListTaskCard 渲染链）底部新增「已完成」折叠区，与看板折叠区同语义
+  * 主任务 done && 根 aggregated → 整树含全部子孙入区（子孙跟随父，复用 rootOf 上溯）
+  * 子任务单独 done && 根未聚合 → 仅原地灰显，不入区
+  * 区默认折叠，标题行「已完成 N」（N=区内根任务数），小三角点击展开/收起；不持久化（不新增 localStorage key）
+  * 展开态取消勾选 → 整树回待办原位（Fix1 规则 4/5 语义天然支持，视图无需额外处理）
+  * **成员口径：各区已完成区成员 = 该视图现有筛选条件 ∩ 根 aggregated，不跨视图泄漏**（Today 只收今天到期/置顶的树，Recent7 只收其日期区间，Tasks 按其筛选分组）
+- 实现：BoardColumn 的 rootOf/根判定**提取为 features/tasks/utils/tree.ts** 供看板与四横板共用（同域复用，避免第 3 处重复触犯 DEV_RULES §3）；各区现有分组逻辑不动，已完成区固定垫底。
+
+**修复 B（Bug2）：子任务独立计时显示**
+- 子任务卡 meta 行补：灰色小闹钟图标 + 该任务独立专注分钟数（minutesOf(taskId)）——今日/最近7天/全部/看板四视图统一
+- 数据已正确（focusSessions 按 taskId 记录，归并只在统计页）；ListTaskCard 已收 minutesOf；TaskCard（看板）若无则 App boardProps 增传（App.tsx 允许）
+
+**修复 C：死声明**
+- 删除 App.tsx:52 的 pomoCompletingRef 死声明（审查警告 1；互斥锁已完整随迁 usePomodoro，App 零引用）
+
+**三关**：tsc 零错误 → npm run build → npm run dev 手测。
+**手测清单（交付报告逐条附证）**：
+1. 横板勾主任务完成 → 整树入底部已完成区，区默认折叠显示 N
+2. 展开区取消主勾 → 整树回待办原位，子任务仍灰
+3. 子任务单独完成 → 原地灰显不进区
+4. 展开态取消子任务勾 → 该子任务复原、整树出区（主任务灰显原位）
+5. 看板折叠区语义无回归（Fix1 矩阵 1-6 抽查）
+6. 四视图子任务卡显示闹钟+分钟；完成一段该子任务专注后数字更新
+7. `grep pomoCompletingRef src/App.tsx` = 0；番茄双入口（浮动条+专注页）并发完成只记一条（DEV_RULES §7 第一耦合点重点复测）
+8. Recent7View 的逾期/今天/未来分组与 Tasks 五分组显示正常，已完成区垫底不遮蔽
+
+**允许触碰**：Today.tsx、Recent7View.tsx、Tasks.tsx、ListTaskCard.tsx、TaskCard.tsx、BoardColumn.tsx、features/tasks/utils/tree.ts（新建，rootOf 提取）、App.tsx（boardProps.minutesOf + 死声明删除）、NewTaskBar.tsx（如 meta 涉及）、相关 docs
+**禁止**：electron/*、数据结构、vite.config.ts
+**commit**：`fix(RF-Fix2): 横板已完成折叠区+子任务计时显示+死声明清理`
+**回滚**：`git reset --hard 2044e3f`
 
 ---
 
@@ -430,3 +473,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.2 | RF-P6b 增收官动作：version→1.0.0 + tag v1.0.0（用户定版约定：起点 v0.1.0 / 终点 v1.0.0） |
 | v1.3 | RF-P1 验收裁定（952≤1000 达标，归因规划层行数预算误差）；RF-P3b 验收线改为 ≤550+组成校验；三道锁升级四道锁（新增基线锁：派发前规划层核对基线与行数预算） |
 | v1.4 | 新增 **RF-Fix1**（聚合语义树化+aiName 同步，插 P2a 后，规则 4/6 用户拍板）与 **RF-P7 设置中心**（登记卡，P6b 后）；收官动作移至 P7 后；总纲补测试交接规则；P2a 验收记录+四项报备备案 |
+| v1.5 | Fix1 验收记录（矩阵 8/8+回归修复+electron 字面量裁定 grep=3 接受，commit 2044e3f）；新增 **RF-Fix2**（横板已完成折叠区+子任务计时显示+死声明清理，插 Fix1 后）；P2a 补记缩进差异已消除；P6b 登记过度导出 4 处+usePomodoro import 风格；P3c 盘点范围补 Recent7View/Today 日期函数（审查报告全项闭环） |
