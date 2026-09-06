@@ -49,7 +49,6 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
   const [page, setPage] = useState<PageKey>('today')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const pomoCompletingRef = useRef(false) // 完成互斥锁（防双组件重复记录）
   // L2 清单树选中项
   const [activeListId, setActiveListId] = useState<string>('all')
   // 新建清单表单
@@ -211,21 +210,6 @@ export default function App() {
   // ---------- 派生 ----------
   // AI 显示名兜底：旧库（主进程未重启自愈时）可能还没有 aiName 字段
   const aiName = db.settings.aiName || DEFAULT_AI_NAME
-
-  const taskProps = {
-    tasks: db.tasks,
-    tags: db.tags,
-    subTags: db.subTags,
-    sections: db.sections,
-    onDeleteTaskRecursive: deleteTaskRecursive,
-    onAdd: addTask,
-    onAddSub: addSubtask,
-    onUpdate: updateTask,
-    onDelete: deleteTask,
-    onPomodoro: (t: Task) => setPomoTarget(t),
-    selectedId,
-    onSelect: (id: string | null) => setSelectedId(id),
-  }
 
   // 看板共享 props（视图A/B 共用，Step 4 分组操作 + 新建任务）
   const boardProps = {
@@ -621,7 +605,7 @@ export default function App() {
             // 视图A：H1 总览看板（该 H1 下所有 H2 平铺，无右栏）；'all'/'today' 保留原任务列表
             <BoardView {...boardProps} h1TagId={activeListId} activeSubTagId={null} />
           ) : (
-            <Tasks {...taskProps} activeListId={activeListId} />
+            <Tasks {...listViewProps} onAdd={addTask} activeListId={activeListId} />
           )
         ) : page === 'focus' ? (
           <PomodoroPage

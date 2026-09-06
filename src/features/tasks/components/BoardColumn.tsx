@@ -5,6 +5,7 @@ import { IconChevron } from '../../../components/icons'
 import FloatingMenu from '../../../components/FloatingMenu'
 import TaskCard from './TaskCard'
 import { boardSort } from '../utils/boardSort'
+import { rootOf } from '../utils/tree'
 import type { CardBundle } from './taskMenu'
 import type { MenuEntry } from '../../../components/FloatingMenu'
 
@@ -45,17 +46,8 @@ export default function SectionColumn({
      历史散落在子任务上的 aggregated 无视）；例外 = 规则6 散件（自身被「聚合」显式标记的 done 子任务，
      其主任务未完成/未聚合时单独入折叠区，不拉扯主任务）。
      堆叠区 = 其余全部（未完成原位 + 已完成但未聚合的灰显原位）；子任务永远嵌套跟随父卡 */
-  const rootOf = (t: Task) => {
-    let cur: Task | undefined = t
-    const seen = new Set<string>([t.id])
-    while (cur?.parentTaskId && !seen.has(cur.parentTaskId)) {
-      seen.add(cur.parentTaskId)
-      cur = tasks.find((x) => x.id === cur!.parentTaskId)
-    }
-    return cur
-  }
   const isFolded = (t: Task) => {
-    const root = rootOf(t)
+    const root = rootOf(tasks, t.id)
     if (root?.aggregated) return true // 整树判定：根 aggregated
     return t.done && t.aggregated === true // 规则6 散件：显式聚合的 done 子任务
   }

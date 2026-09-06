@@ -9,6 +9,8 @@ import ListTaskCard from '../components/ListTaskCard'
 import NewTaskBar from '../components/NewTaskBar'
 import { buildTaskContextMenu } from '../features/tasks/components/taskMenu'
 import { boardSort } from '../features/tasks/utils/boardSort'
+import { isRootAggregated } from '../features/tasks/utils/tree'
+import { DoneFoldSection } from '../components/ListTaskCard'
 import type { Priority } from '../features/tasks/types'
 
 export function todayStr() {
@@ -303,15 +305,20 @@ export default function Today(props: {
 
   const today = todayStr()
   const mainTasks = tasks.filter((t) => !t.parentTaskId)
-  // 已逾期：今天之前到期的未完成主任务，最久远的在最上
+  // RF-Fix2 语义：done 未聚合 → 原分组灰显原位；根 aggregated → 出分组进底部「已完成」折叠区
+  // 已逾期：今天之前到期（未完成或未聚合的已完成），最久远的在最上
   const overdue = mainTasks
-    .filter((t) => !t.done && t.dueDate && t.dueDate < today)
+    .filter((t) => t.dueDate && t.dueDate < today && (!t.done || !isRootAggregated(tasks, t)))
     .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
   const overdueIds = new Set(overdue.map((t) => t.id))
   // 今天：今天到期 + 置顶今日（逾期的不重复出现）
   const todays = mainTasks
-    .filter((t) => !t.done && !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday))
+    .filter((t) => !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday) && (!t.done || !isRootAggregated(tasks, t)))
     .sort(boardSort)
+  // 已完成折叠区成员：现有筛选（逾期/今天/置顶）∩ 根 aggregated
+  const doneRoots = mainTasks.filter(
+    (t) => t.done && isRootAggregated(tasks, t) && ((t.dueDate && t.dueDate < today) || t.dueDate === today || t.isPinnedToday)
+  )
 
   const cardBase = {
     aiName: props.aiName,
@@ -377,7 +384,15 @@ export default function Today(props: {
       <div className="mt-2 max-w-3xl flex-1 overflow-y-auto pb-6">
         {group('已逾期', overdue, 'danger')}
         {group('今天', todays)}
-        {overdue.length === 0 && todays.length === 0 && (
+        <DoneFoldSection
+          roots={doneRoots}
+          tasks={tasks}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          minutesOf={minutesOf}
+          callbacks={cardBase}
+        />
+        {overdue.length === 0 && todays.length === 0 && doneRoots.length === 0 && (
           <div className="mt-10 text-center text-sm text-neutral-300 dark:text-neutral-600">
             今天没有安排，未来的任务去「最近7天」看
           </div>

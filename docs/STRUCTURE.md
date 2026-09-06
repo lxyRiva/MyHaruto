@@ -49,6 +49,7 @@ MyHaruto/
     │   ├── tasks/
     │   │   ├── hooks/useTaskActions.ts    # 任务/清单/检查事项 32 个数据变更 (db,setDb)
     │   │   ├── hooks/useTaskSelectors.ts  # 任务派生数据 (db,selectedId) 纯派生
+    │   │   ├── utils/tree.ts              # rootOf 根判定/isRootAggregated（RF-Fix2 提取，看板+横板共用）
     │   │   └── components/SubTagModal.tsx # H2 标签弹窗 + PALETTE/H2_PALETTE/EMOJI_PRESETS
     │   ├── pomodoro/hooks/usePomodoro.ts  # 番茄钟状态机（pomoCompletingRef 互斥锁）
     │   ├── habits/hooks/useHabits.ts      # 习惯打卡数据变更
@@ -59,7 +60,7 @@ MyHaruto/
     │
     └── pages/
         ├── Today.tsx        # ★ 今日页 + TaskNode 递归任务树（无限嵌套+统一右键+行内编辑）
-        ├── Tasks.tsx        # 任务页（按 L2 清单筛选，复用 TaskNode）
+        ├── Tasks.tsx        # 任务页（全部/清单筛选，RF-Fix2 起 ListTaskCard 渲染 + 已完成折叠区）
         ├── PomodoroPage.tsx # 专注页（圆环计时+任务池含子任务+今日统计）
         ├── Calendar.tsx     # 月历（周/月双视图、速览添加、无日期提示）
         ├── Habits.tsx       # 习惯打卡（周/月/年、行内编辑、右键管理）

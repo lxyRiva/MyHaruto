@@ -5,6 +5,8 @@ import type { SubTag, Task } from '../types'
 import ListTaskCard, { type ListCardCallbacks } from './ListTaskCard'
 import NewTaskBar from './NewTaskBar'
 import { boardSort } from '../features/tasks/utils/boardSort'
+import { isRootAggregated } from '../features/tasks/utils/tree'
+import { DoneFoldSection } from './ListTaskCard'
 import type { Priority } from '../features/tasks/types'
 
 function localToday(): string {
@@ -55,18 +57,32 @@ export default function Recent7View(props: {
   const today = localToday()
   const mainTasks = useMemo(() => tasks.filter((t) => !t.parentTaskId), [tasks])
 
-  const overdue = mainTasks.filter((t) => !t.done && t.dueDate && t.dueDate < today).sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
+  // RF-Fix2 语义：done 未聚合 → 原分组灰显原位；根 aggregated → 出分组进底部「已完成」折叠区
+  const overdue = mainTasks
+    .filter((t) => t.dueDate && t.dueDate < today && (!t.done || !isRootAggregated(tasks, t)))
+    .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
   const overdueIds = new Set(overdue.map((t) => t.id))
   const todays = mainTasks
-    .filter((t) => !t.done && !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday))
+    .filter((t) => !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday) && (!t.done || !isRootAggregated(tasks, t)))
     .sort(boardSort)
 
   const futureGroups = Array.from({ length: 6 }, (_, i) => {
     const date = addDays(today, i + 1)
-    const items = mainTasks.filter((t) => !t.done && t.dueDate === date).sort(boardSort)
+    const items = mainTasks
+      .filter((t) => t.dueDate === date && (!t.done || !isRootAggregated(tasks, t)))
+      .sort(boardSort)
     const label = i === 0 ? '明天' : `${Number(date.slice(5, 7))}月${Number(date.slice(8))}日`
     return { date, label, items }
   }).filter((g) => g.items.length > 0)
+
+  // 已完成折叠区成员：现有筛选（逾期/今天/未来6天）∩ 根 aggregated
+  const futureDates = new Set(Array.from({ length: 6 }, (_, i) => addDays(today, i + 1)))
+  const doneRoots = mainTasks.filter(
+    (t) =>
+      t.done &&
+      isRootAggregated(tasks, t) &&
+      ((t.dueDate && t.dueDate < today) || t.dueDate === today || (t.dueDate && futureDates.has(t.dueDate)))
+  )
 
   const group = (label: string, items: Task[], tone: 'normal' | 'danger' = 'normal') =>
     items.length > 0 ? (
@@ -110,7 +126,15 @@ export default function Recent7View(props: {
         {group('已逾期', overdue, 'danger')}
         {group('今天', todays)}
         {futureGroups.map((g) => group(g.label, g.items))}
-        {overdue.length === 0 && todays.length === 0 && futureGroups.length === 0 && (
+        <DoneFoldSection
+          roots={doneRoots}
+          tasks={tasks}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          minutesOf={minutesOf}
+          callbacks={cardCallbacks}
+        />
+        {overdue.length === 0 && todays.length === 0 && futureGroups.length === 0 && doneRoots.length === 0 && (
           <div className="mt-10 text-center text-sm text-neutral-300 dark:text-neutral-600">未来 7 天没有安排</div>
         )}
       </div>
