@@ -89,14 +89,14 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
       }
     })
 
-  // 勾选/取消完成（RF-Fix1 聚合语义树化，规则 4/6 用户拍板）：
+  // 勾选/取消完成（RF-Fix3 修订 Fix1 规则 1/5，用户拍板语义演进）：
   //   树 = 主任务 + 全部子孙（parentTaskId 链）；折叠区成员判定唯一依据 = 根任务的 aggregated
-  //   规则1 勾主任务 → 级联整树 done + aggregated 入折叠区
-  //   规则2 主任务已完成且全部子孙已完成（任意路径达成）→ 根 aggregated=true 自动聚合
-  //   规则3 勾子任务 → 仅自身 done，不触发聚合（除非恰达成规则2）
-  //   规则4 折叠区取消主勾 → 根 done=false + 整树 aggregated 清除回待办；子孙 done 保留（拍板）
-  //   规则5 折叠区取消任一子孙勾 → 整树 aggregated 清除回待办；自身 done=false，其余 done 保持
-  //   规则7 回区后重新达成规则1/2 → 再次自动聚合（可循环）
+  //   规则1' 勾主任务 → 根 done=true + 根 aggregated=true 入折叠区；子孙 done 保持各自状态，不强制（取消级联）
+  //   规则2 根已完成且全部子孙已完成（任意路径达成）→ 根 aggregated=true 自动聚合
+  //   规则3 勾子任务 → 仅自身 done（折叠区内勾选亦然，已在区无需聚合动作；恰达成规则2 时自动聚合）
+  //   规则4 折叠区取消主勾 → 根 done=false + aggregated=false，整树回待办；子任务状态保持
+  //   规则5' 折叠区取消任一子孙勾 → 整树回待办（根 aggregated=false）且根 done 自动置 false
+  //          （子孙有未完成时主任务不得保持完成态）；其余子孙状态保持
   const toggleTaskDone = (id: string) =>
     setDb((d) => {
       const target = d.tasks.find((t) => t.id === id)
@@ -131,10 +131,13 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
 
       if (willBeDone) {
         if (target.id === root.id) {
-          // 规则1：勾主任务 → 级联整树完成并聚合
-          return { ...d, tasks: d.tasks.map((t) => (inTree(t) ? { ...t, done: true, aggregated: true } : t)) }
+          // 规则1'：勾主任务 → 仅根 done + aggregated（不级联子孙）
+          return {
+            ...d,
+            tasks: d.tasks.map((t) => (t.id === root.id ? { ...t, done: true, aggregated: true } : t)),
+          }
         }
-        // 规则3：勾子任务 → 仅自身完成；若恰达成规则2（根已完成且全树完成）→ 自动聚合
+        // 规则3/2：勾子任务 → 仅自身完成；若恰达成规则2（根已完成且全树完成）→ 自动聚合
         const after = d.tasks.map((t) => (inTree(t) && t.id === id ? { ...t, done: true } : t))
         const allTreeDone = after.filter(inTree).every((t) => t.done)
         if (root.done && allTreeDone) {
@@ -147,24 +150,19 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
       }
 
       if (target.id === root.id) {
-        // 规则4：取消主勾 → 根 done=false + 整树 aggregated 清除回待办；子孙 done 保留
+        // 规则4：取消主勾 → 根 done=false + aggregated=false，整树回待办；子孙状态保持
         return {
           ...d,
-          tasks: d.tasks.map((t) =>
-            inTree(t)
-              ? t.id === root.id
-                ? { ...t, done: false, aggregated: false }
-                : { ...t, aggregated: false }
-              : t
-          ),
+          tasks: d.tasks.map((t) => (t.id === root.id ? { ...t, done: false, aggregated: false } : t)),
         }
       }
-      // 规则5：取消子孙勾 → 整树 aggregated 清除回待办；自身 done=false，其余 done 保持
+      // 规则5'：取消子孙勾 → 自身 done=false；根 aggregated=false 且根 done=false
+      //（子孙有未完成时主任务不得保持完成态）；其余子孙状态保持
       return {
         ...d,
         tasks: d.tasks.map((t) => {
-          if (t.id === id) return { ...t, done: false, aggregated: false }
-          if (inTree(t) && t.aggregated) return { ...t, aggregated: false }
+          if (t.id === id) return { ...t, done: false }
+          if (t.id === root.id) return { ...t, done: false, aggregated: false }
           return t
         }),
       }

@@ -10,6 +10,8 @@ export function boardSort(a: Task, b: Task) {
   const pw = PRIO_W[(a.priority ?? 'none') as Priority] - PRIO_W[(b.priority ?? 'none') as Priority]
   if (pw !== 0) return pw
   if ((a.dueDate ?? '') !== (b.dueDate ?? '')) return a.dueDate ? -1 : 1
+  // RF-Fix3：同日期同优先级内，done 未聚合任务排在待办之后（聚合任务已由调用方过滤出折叠区，不参与排序）
+  if (a.done !== b.done) return a.done ? 1 : -1
   return b.createdAt.localeCompare(a.createdAt) // 新任务在前
 }
 
