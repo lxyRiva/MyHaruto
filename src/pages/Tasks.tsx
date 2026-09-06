@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import type { FocusSession, Section, SubTag, Task, Tag } from '../types'
 import { todayStr } from './Today'
 import ListTaskCard, { DoneFoldSection, type ListCardCallbacks } from '../components/ListTaskCard'
+import NewTaskBar from '../components/NewTaskBar'
 import { isRootAggregated } from '../features/tasks/utils/tree'
 import type { Priority } from '../features/tasks/types'
 
@@ -15,7 +16,7 @@ export default function Tasks(props: {
   focusSessions: FocusSession[]
   aiName: string
   activeListId: string // 'all' | 'today' | tagId
-  onAdd: (title: string, dueDate: string | null, tagId: string | null) => void
+  onAddTaskWithOptions: (title: string, opts: { dueDate?: string | null; priority?: Priority; tagId?: string | null }) => void
   selectedId: string | null
   onSelect: (id: string | null) => void
   minutesOf: (id: string) => number
@@ -36,7 +37,7 @@ export default function Tasks(props: {
   onDeleteTaskRecursive: (id: string) => void
   onOpenSubTag: (subTagId: string) => void
 }) {
-  const { tasks, tags, subTags, sections, focusSessions, aiName, activeListId, onAdd, selectedId, onSelect, minutesOf } = props
+  const { tasks, tags, subTags, sections, focusSessions, aiName, activeListId, selectedId, onSelect, minutesOf } = props
   const today = todayStr()
   // 筛选：按 L2 选中项（全部/今天/H1 标签）
   const filtered = useMemo(
@@ -107,24 +108,13 @@ export default function Tasks(props: {
         任务 {activeTag && <span className="text-sm font-normal" style={{ color: activeTag.color }}>· {activeTag.name}</span>}
       </h1>
 
-      <div className="mt-4 flex gap-2">
-        <input
-          placeholder={`新任务${activeTag ? ` → ${activeTag.name}` : ''}，回车保存`}
-          className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-700
-            bg-white dark:bg-neutral-900 px-4 py-2.5 text-sm outline-none focus:border-haruto-sea"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-              const dateInput = document.getElementById('new-date') as HTMLInputElement
-              onAdd(e.currentTarget.value.trim(), dateInput.value || null, activeTag ? activeTag.id : null)
-              e.currentTarget.value = ''
-            }
-          }}
-        />
-        <input
-          id="new-date"
-          type="date"
-          className="rounded-lg border border-neutral-200 dark:border-neutral-700
-            bg-white dark:bg-neutral-900 px-3 py-2.5 text-sm outline-none focus:border-haruto-sea"
+      {/* 新建行（P2b）：换 NewTaskBar 与今日页统一（日期选择器+优先级四旗+H2 标签）；H1 视图下未选标签时兜底挂该 H1 */}
+      <div className="mt-4">
+        <NewTaskBar
+          subTags={props.subTags}
+          defaultDueDate={null}
+          onAdd={(title, due, priority, tagId) =>
+            props.onAddTaskWithOptions(title, { dueDate: due, priority, tagId: tagId ?? (activeTag?.id ?? null) })}
         />
       </div>
 

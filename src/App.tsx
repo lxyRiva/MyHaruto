@@ -605,7 +605,7 @@ export default function App() {
             // 视图A：H1 总览看板（该 H1 下所有 H2 平铺，无右栏）；'all'/'today' 保留原任务列表
             <BoardView {...boardProps} h1TagId={activeListId} activeSubTagId={null} />
           ) : (
-            <Tasks {...listViewProps} onAdd={addTask} activeListId={activeListId} />
+            <Tasks {...listViewProps} activeListId={activeListId} />
           )
         ) : page === 'focus' ? (
           <PomodoroPage
@@ -657,15 +657,15 @@ export default function App() {
         )}
       </main>
 
-      {/* ===== 右栏 A：任务详情面板（今日页 / 最近7天；文本可编辑+检查事项+AI留言区，Step 6） ===== */}
-      {selected && (page === 'today' || (page === 'tasks' && activeListId === 'recent7')) && (
+      {/* ===== 右栏 A：任务详情面板（今日 / 最近7天 / 全部·今天列表统一右栏，RF-P2b；看板视图选中即收起不渲染） ===== */}
+      {selected && (page === 'today' || page === 'tasks') && (
         <div
           onMouseDown={(e) => startDetailResize(e.clientX)}
           title="拖动调整宽度"
           className="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-haruto-sea/30"
         />
       )}
-      {selected && (page === 'today' || (page === 'tasks' && activeListId === 'recent7')) && (
+      {selected && (page === 'today' || page === 'tasks') && (
         <aside
           style={{ width: detailWidth }}
           className="shrink-0 overflow-hidden border-l border-neutral-200 p-5 dark:border-neutral-800"
@@ -681,117 +681,21 @@ export default function App() {
             <TaskDetailPanel
               task={selected}
               aiName={aiName}
+              tags={db.tags}
               subTags={db.subTags}
               sections={db.sections}
+              childTasks={selectedChildren}
               onOpenSubTag={openSubTagBoard}
               onUpdateTask={updateTask}
+              onToggleDone={toggleTaskDone}
+              onAddSubtask={addSubtaskInline}
+              onPomodoro={(t) => setPomoTarget(t)}
+              onDeleteTask={(id) => { deleteTask(id); setSelectedId(null) }}
               onToggleChecklist={toggleChecklistItem}
               onAddChecklistItem={addChecklistItem}
               onUpdateChecklistItem={updateChecklistItem}
               onDeleteChecklistItem={deleteChecklistItem}
             />
-          </div>
-        </aside>
-      )}
-
-      {/* ===== 右栏 B：旧版详情（任务的 all·today 列表选中时；看板视图不渲染） ===== */}
-      {selected && page === 'tasks' && (activeListId === 'all' || activeListId === 'today') && (
-        <aside className="w-[320px] shrink-0 border-l border-neutral-200 dark:border-neutral-800 p-5 overflow-y-auto">
-          <div className="flex items-start justify-between gap-2">
-            <h2 className="font-semibold text-[15px] leading-snug break-all">
-              {selected.done ? '✅ ' : ''}{selected.title}
-            </h2>
-            <button
-              onClick={() => setSelectedId(null)}
-              className="text-neutral-400 hover:text-neutral-600 text-lg leading-none"
-              title="收起"
-            >
-              ×
-            </button>
-          </div>
-          {selected.tagId && tagMap.get(selected.tagId) && (
-            <span
-              className="inline-flex items-center gap-1.5 mt-2 text-xs px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: (tagMap.get(selected.tagId) as Tag).color + '22', color: (tagMap.get(selected.tagId) as Tag).color }}
-            >
-              ● {(tagMap.get(selected.tagId) as Tag).name}
-            </span>
-          )}
-          <p className="mt-1 text-xs text-neutral-400">
-            {selected.dueDate ? `📅 ${selected.dueDate}` : '无日期'} · 创建于 {selected.createdAt.slice(0, 10)}
-          </p>
-
-          {/* 子任务（每条可单独开番茄钟，问题2） */}
-          <div className="mt-5">
-            <div className="flex justify-between text-xs font-medium text-neutral-500 mb-1.5">
-              <span>子任务</span>
-              {selectedChildren.length > 0 && (
-                <span>{selectedChildren.filter((c) => c.done).length}/{selectedChildren.length}</span>
-              )}
-            </div>
-            {selectedChildren.map((c) => (
-              <div key={c.id} className="group flex items-center gap-2.5 py-1.5">
-                <input
-                  type="checkbox"
-                  checked={c.done}
-                  onChange={(e) => updateTask(c.id, { done: e.target.checked })}
-                  className="accent-haruto-sea w-3.5 h-3.5 shrink-0"
-                />
-                <span className={`flex-1 text-sm truncate ${c.done ? 'line-through text-neutral-400' : ''}`}>{c.title}</span>
-                <button
-                  onClick={() => setPomoTarget(c)}
-                  className="text-xs opacity-40 hover:opacity-100 transition-opacity shrink-0"
-                  title="子任务单独专注"
-                >
-                  🍅
-                </button>
-              </div>
-            ))}
-            <input
-              placeholder="+ 添加子任务，回车保存"
-              className="mt-1 w-full text-sm rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700
-                bg-transparent px-3 py-2 outline-none focus:border-haruto-sea"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                  addSubtask(selected.id, e.currentTarget.value.trim())
-                  e.currentTarget.value = ''
-                }
-              }}
-            />
-          </div>
-
-          <div className="mt-5">
-            <div className="text-xs font-medium text-neutral-500 mb-1.5">描述</div>
-            <textarea
-              value={selected.description}
-              onChange={(e) => updateTask(selected.id, { description: e.target.value })}
-              placeholder="写任务描述…"
-              className="w-full h-24 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700
-                bg-white dark:bg-neutral-900 p-3 outline-none focus:border-haruto-sea resize-none"
-            />
-          </div>
-
-          {/* AI 留言区（M6 上线后他每天会来读任务、挑 2-3 条在这里留言） */}
-          <div className="mt-5">
-            <div className="text-xs font-medium text-neutral-500 mb-1.5">💬 {aiName} 的留言</div>
-            <div className="rounded-lg border border-dashed border-haruto-sea/30 p-3 text-sm italic text-haruto-sea/60">
-              "……"（他每天会来读你的任务，挑 2-3 条在这里留言）
-            </div>
-          </div>
-
-          <div className="mt-6 flex items-center gap-3">
-            <button
-              onClick={() => setPomoTarget(selected)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-haruto-sea text-white"
-            >
-              🍅 开始专注
-            </button>
-            <button
-              onClick={() => { deleteTask(selected.id); setSelectedId(null) }}
-              className="text-xs text-red-400 hover:text-red-500"
-            >
-              🗑 删除任务
-            </button>
           </div>
         </aside>
       )}
