@@ -214,6 +214,8 @@ app/layout/SettingsModal.tsx      ← 设置弹窗迁出。状态归属：showSe
 **明确不做**：Modal/ConfirmModal 壳统一（降级 P6b 可选项）。
 
 **测试验收**：App.tsx **≤550 行（目标 ≤500）且内容仅剩路由编排 + 全局数据 useEffect + 各布局组件组合**，不因 L1/L2/MainArea 拆净程度死扣行数；tsc/build。
+
+> **验收记录（v1.12，2026-09-06）**：开发/测试/审查三报告通过。App.tsx 实测 **316 行**（远优于 ≤550），四布局组件各 ≤500；STRUCTURE.md 全量重写入本 commit（旧 pages/components 描述移除，App 职责=数据 hooks+nav API+布局组合）。**审查裁定备案**：①L2 纯 UI 态切页重置=行为语义合理变化，落此记录 ②死解构 tagMap/todayStr/mainTasks、③renderH1/renderSubTagRow 超 50 行、④L2Sidebar todaySessions 类型偏松 → 三项登记 **RF-P6b**。commit **66480d2**（6 文件 +950/−691）。
 **用户手测**：全视图路由 + Bug2 场景（最近7天点 H2、H1 切换、看板进右栏收起）+ 设置弹窗改名保存/取消/草稿重置。
 **回滚**：reset 到 P3a。
 
@@ -301,7 +303,7 @@ ai/ assets/                  # M5/P6 起创建，本卡不建空目录
 
 ## 十一、RF-P6b：死代码清扫 + 重构收官
 
-ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEHOLDER_PAGE 两项移除；全库无引用导出清理（逐项列出经审查确认才删）。**审查登记（v1.5）**：过度导出 4 处——taskMenu.tsx 的 PRIO_META/prioDot/withCheck（仅文件内使用）与 SubTagModal.tsx 的 EMOJI_PRESETS；usePomodoro.ts:21 内联 import 类型改顶部 import type。**可选项**：Modal/ConfirmModal 壳统一（审查评估真实重复后决定，避免为抽而抽）。回滚：reset 到 P6a。
+ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEHOLDER_PAGE 两项移除；全库无引用导出清理（逐项列出经审查确认才删）。**审查登记（v1.5）**：过度导出 4 处——taskMenu.tsx 的 PRIO_META/prioDot/withCheck（仅文件内使用）与 SubTagModal.tsx 的 EMOJI_PRESETS；usePomodoro.ts:21 内联 import 类型改顶部 import type。**审查登记（v1.12，P3b）**：L2Sidebar 死解构 tagMap/todayStr/mainTasks 清除；renderH1/renderSubTagRow 函数超 50 行拆分；L2Sidebar todaySessions 类型偏松收紧。**可选项**：Modal/ConfirmModal 壳统一（审查评估真实重复后决定，避免为抽而抽）。回滚：reset 到 P6a。
 
 **重构收官动作（RF-P7 设置中心验收通过后由规划 Agent 执行，属定版仪式不属开发 commit；原挂 P6b 后，2026-09-06 因 P7 登记移位）**：
 1. package.json `"version": "0.1.0"` → `"1.0.0"`，提交 `chore: v1.0.0 重构完成（模块化+数据独立化落地）`
@@ -578,3 +580,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.9 | P3a 开发/测试/审查完成，手测发现阻塞 bug → **RF-Fix3a 插卡**（诊断先行：取证推翻图片路径假设，真根因=运行时异常/循环 import 候选，Vite overlay 遮罩致"点不动"；禁止 `/assets` 磁盘根绝对路径；审查方法学补丁：搬移审查增查资源/URL 字符串+运行时项）；提交序裁定=P3a 按已审计 diff 先落 commit |
 | v1.10 | Fix3a 验收：**零代码改动**（真根因=环境态 HMR/双实例/localStorage 回滚族），三条排障经验入 DEV_RULES §9；P3b 解锁 |
 | v1.11 | Fix3a 手测项勘误：「归档折叠」无对应功能区（PRD §3.6 vs 实现缺失）→ Fix4 池新增 N3；Fix4 池现 10 项 |
+| v1.12 | P3b 验收记录（三报告通过，App 316 行，commit 66480d2，STRUCTURE 重写入 commit）；审查裁定备案：L2 UI 态切页重置=合理行为变化；P6b 追加登记 3 项（死解构/超 50 行函数/类型偏松） |
