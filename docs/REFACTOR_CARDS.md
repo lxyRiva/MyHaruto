@@ -52,7 +52,8 @@
 | RF-Fix2 | 横板已完成折叠区+子任务计时显示+死声明清理 | 1 | 中 | Fix1 提交（2044e3f） |
 | RF-Fix3 | 聚合取消级联+折叠区空心框+done 沉底 | 1 | 中 | Fix2 提交（4f83c9a） |
 | RF-P2b | 右栏统一+Today死代码+NewTaskBar（范围缩减版） | 1 | 中 | Fix3 提交（a744503） |
-| RF-P3a | 全库纯搬移归位 | 1 | 低 | P2b 提交 |
+| RF-P3a | 全库纯搬移归位（已审计，按审计 diff 落 commit） | 1 | 低 | P2b 提交（38bafa5） |
+| RF-Fix3a | 重要日运行时修复（阻塞 bug，诊断先行） | 1 | 中 | P3a 提交 |
 | RF-P3b | 布局抽取 L1/L2/MainArea | 1 | 中低 | P3a 提交 |
 | RF-P3c | 日期收口+useLocalStorage+L1 排序 | 1 | 中低 | P3b 提交 |
 | RF-P4 | repository+写盘加固+数据文件夹按钮 | 1 | 中 | P3c 提交 |
@@ -475,6 +476,30 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 
 ---
 
+## 十七、RF-Fix3a：重要日运行时修复（阻塞 bug，诊断先行，P3a 后 / P3b 前）
+
+> **⚠️ 诊断先行卡（维护层 SOP：先诊断后修复）。规划层取证已推翻"图片相对路径断裂"假设，根因以 console 证据为准，禁止按假设瞎修。**
+
+**规划层取证（2026-09-06，开发免重查）**：
+- ImportantDays.tsx 资源引用搬移前后**逐字节相同**（38bafa5 旧 src/pages L124/156 = 现新路径同行号，`src={`assets/days/${png.file}`}`）。该写法是 **URL 相对**（相对文档 URL，非源文件位置），源文件搬家不影响它——"文件深度变化致路径断裂"假设不成立
+- 全库扫描：引用 public/ 资源的仅 ImportantDays 一处（5 行），**其他页面无同类**（原卡要求 3 已由规划层完成）
+- "页面点不动"高度疑似 **运行时 JS 异常 → Vite 错误遮罩盖全屏**（fixed 遮罩=无法点击），图片挂为次生现象；搬移引出**循环 import** 为头号候选（tsc 不抓循环依赖，静态审计盲区）
+- P3a 为已审计未提交工作区 → **提交序：P3a 先按已审计 diff 落 commit（回滚锚），本卡修复单独提交**
+
+**步骤**：
+0. **全新启动** `npm run dev`（排障经验①：先排除 HMR 断连坏窗口）+ `ELECTRON_ENABLE_LOGGING=1` 收渲染进程 console 报错**原文**入报告 → 依证据定位真根因
+1. 修复根因（候选：循环 import 改造/运行时异常；修复不得引入新耦合，features 互禁铁律仍有效）
+2. 插画引用处置（**规划层裁定，覆盖用户原建议**）：**禁止改 `/assets/...` 形式**——Electron file:// + base './' 下以 `/` 开头解析到磁盘根，必炸；若 console 证实图片确 404：9 张 PNG 迁 `src/assets/days/` + Vite `import`（构建期按 base 重写，最稳）；若图片实为次生现象则维持现状 URL 相对不动
+3. 三关 + 重要日全操作手测（增删改/9 插画/农历/生理期弹窗/归档折叠）+ 九视图回归
+**允许触碰**：src/features/important-days/**、src/assets/days/（如走迁移方案，9 张 PNG git mv）、public/assets/days/（迁出后删）、相关 docs
+**禁止**：electron/*、vite.config.ts
+**commit**：`fix(RF-Fix3a): 重要日运行时修复+插画引用加固`
+**回滚**：P3a 提交
+
+> **审查方法学补丁（v1.9）**：搬移类卡审查增查**资源/URL/动态路径字符串**与运行时手测——本次静态审计（多重集+双重 diff）对"字符串原样搬运但运行时受搬家影响"的盲区已证实；后续 P3b/P6b 搬移审查单子上必须含此项。
+
+---
+
 ## 附录 A：docs/DEV_RULES.md 全文（RF-P1 创建，含 §8）
 
 ```markdown
@@ -546,3 +571,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.6 | Fix2 验收记录（8/8 PASS+Tasks.tsx 渲染提前落地备案，commit 4f83c9a）；新增 **RF-Fix3**（聚合取消级联+折叠区空心框+done 沉底——**修订 Fix1 规则 1**，用户拍板语义演进）；P2b 范围缩减注记（遗留③已清账）；开工包精益化规则（不重复指读已读文件） |
 | v1.7 | Fix3 验收记录（用户手测通过+规划层尽调代提交，commit a744503）；新增 **RF-Fix4 登记槽**（验收 bug 批量修复，P6b 后/收官前，不混 P6b）；P2b 验收线 ≤800→≤850（基线锁重算）+右栏子任务勾选必须走 toggleTaskDone 硬性补注；**流程简化（用户定）**：bug 攒批后置、Fix3 起免独立交付报告评审轮，直接测试会话+手测+授权 commit |
 | v1.8 | P2b 验收记录（手动验收，commit 38bafa5，App 841≤850）；**RF-Fix4 池入 9 项**（B1-B4 子任务右栏/计时/检查事项、N1 顺延/N2 看板拖拽、R1-R3 对账待定——R2/R3 疑似 Fix3 已修出卡时核实） |
+| v1.9 | P3a 开发/测试/审查完成，手测发现阻塞 bug → **RF-Fix3a 插卡**（诊断先行：取证推翻图片路径假设，真根因=运行时异常/循环 import 候选，Vite overlay 遮罩致"点不动"；禁止 `/assets` 磁盘根绝对路径；审查方法学补丁：搬移审查增查资源/URL 字符串+运行时项）；提交序裁定=P3a 按已审计 diff 先落 commit |
