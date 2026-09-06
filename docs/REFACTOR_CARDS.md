@@ -50,7 +50,8 @@
 | RF-P2a | BoardView 拆分（纯搬移） | 1 | 低 | P1 提交 |
 | RF-Fix1 | 聚合语义树化+aiName 全局同步（两 bug 修复） | 1 | 中 | P2a 提交（0754339） |
 | RF-Fix2 | 横板已完成折叠区+子任务计时显示+死声明清理 | 1 | 中 | Fix1 提交（2044e3f） |
-| RF-P2b | 全部页现代化+右栏统一+删旧面板 | 1 | 中 | Fix2 提交 |
+| RF-Fix3 | 聚合取消级联+折叠区空心框+done 沉底 | 1 | 中 | Fix2 提交（4f83c9a） |
+| RF-P2b | 全部页现代化+右栏统一+删旧面板 | 1 | 中 | Fix3 提交 |
 | RF-P3a | 全库纯搬移归位 | 1 | 低 | P2b 提交 |
 | RF-P3b | 布局抽取 L1/L2/MainArea | 1 | 中低 | P3a 提交 |
 | RF-P3c | 日期收口+useLocalStorage+L1 排序 | 1 | 中低 | P3b 提交 |
@@ -144,6 +145,8 @@ App.tsx                       ← 删旧右栏 B（1128-1228 行整块）；右�
                                  selected && (page==='today' || page==='tasks')
 ```
 **禁止**：新建任何 Legacy 文件。
+
+> **v1.6 范围更新**：Tasks.tsx 换 ListTaskCard 渲染已由 RF-Fix2 提前完成（收尾轮遗留③清账）。本卡剩余=①右栏统一：删旧内联面板 B，全部页切 TaskDetailPanel（功能映射表复核，P2b 原表仍有效）②Today.tsx TaskNode 死代码删除（Fix2 后已无引用）③Tasks 新建行换 NewTaskBar。
 
 **功能映射表**（开发交付物，验收逐项打勾，一项不落）：
 
@@ -317,7 +320,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 语义定义：树 = 主任务 + 全部子孙（parentTaskId 链）；**折叠区成员判定唯一依据 = 根任务的 aggregated**（渲染/逻辑沿 parentTaskId 上溯取根标志；历史数据散落在子任务上的 aggregated 字段一律无视——不做数据修复、不改 electron 数据结构）。
 
 规则（已拍板）：
-1. 勾选主任务为完成 → 级联全部子孙 done=true + 根 aggregated=true，整树入折叠区
+1. 勾选主任务为完成 → 级联全部子孙 done=true + 根 aggregated=true，整树入折叠区 **（⚠ v1.6 修订：级联已被 RF-Fix3 取消——勾主不再强制子孙 done，以 Fix3 卡为准）**
 2. 主任务已完成且全部子孙已完成（任意路径达成）→ 根 aggregated=true 自动聚合（含无子孙的孤立主任务）
 3. 子任务勾选完成：不触发聚合，除非恰好达成规则 2
 4. 折叠区取消主任务勾选 → 根 done=false + aggregated=false，整树回待办区；**子任务 done 保留**（灰显跟随回待办区）【拍板：保留完成态】
@@ -404,6 +407,44 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 **commit**：`fix(RF-Fix2): 横板已完成折叠区+子任务计时显示+死声明清理`
 **回滚**：`git reset --hard 2044e3f`
 
+> **验收记录（v1.6，2026-09-06）**：手测清单 8/8 PASS（用户手测通过）。规划层机械核验：工作区 8M+tree.ts 全在卡范围、tsc PASS、App pomoCompletingRef=0、App.tsx 937 行。**范围备案**：Tasks.tsx 换 ListTaskCard 渲染已随修复 A 提前落地（渲染链统一必要部分），收尾轮遗留③实质清账，P2b 范围相应缩减。开发⑤-2 报备的"done 混排"由用户拍板转入 RF-Fix3 修复 B（done 沉底）。commit **4f83c9a**（9 文件 +215/−69）。
+
+---
+
+## 十五、RF-Fix3：聚合取消级联 + 折叠区空心框 + done 沉底（修复卡，Fix2 后 / P2b 前）
+
+> **给开发 Agent**。行为变化卡。**本卡修订 Fix1 规则 1**——用户实际使用后拍板的语义演进，冲突处以本卡为准。
+
+**修复 A：勾主任务不再级联子任务**
+新语义（取代 Fix1 规则 1 的级联部分）：
+1. 勾选主任务完成 → 根 done=true + 根 aggregated=true（整树入折叠区）；**子孙 done 保持各自状态，不强制**；折叠区内未完成子任务显示空心框（渲染以自身 done 为准，父卡灰显不传染子卡样式）
+2. Fix1 规则 2 保持：根已完成且全部子孙已完成（任意路径）→ 自动聚合
+3. Fix1 规则 4 保持：折叠区取消主勾 → 根 done=false + aggregated=false，整树回待办，子任务状态保持
+4. **修订规则 5**：折叠区取消任一子孙勾选 → 整树回待办（根 aggregated=false）**且根 done 自动置 false**（子孙有未完成时主任务不得保持完成态）；其余子孙状态保持
+5. 折叠区内勾选未完成子任务 → 仅自身 done=true；已在区无需聚合动作
+- 实现锚点：useTaskActions.toggleTaskDone（**删除级联写入**，新增规则 4' 的根 done 联动）；TaskCard/DoneFoldSection 折叠区子卡渲染核实"以自身 done 渲染"（Fix2 渲染链已就绪，预计改动极小）
+- 数据兼容：Fix1 期间被级联置 done 的子任务**不做数据修复**（用户可手动取消）
+
+**修复 B：done 沉底**
+- boardSort 增加完成维度：**同日期同优先级内，done 未聚合任务排在待办之后**；聚合任务不参与排序（已折叠）
+- 生效范围：boardSort 全部消费方（看板列内 + 横板日期组）语义一致
+- 不改变组间顺序（日期/优先级/分组结构不动，仅组内 done 沉底）
+
+**三关**：tsc 零错误 → npm run build → npm run dev 手测。
+**手测清单（交付报告逐条附证）**：
+1. 主任务（含 1 完成 1 未完成子任务）勾完成 → 整树入折叠区；完成子灰显、未完成子空心框
+2. 折叠区取消未完成子任务勾 → 整树回待办，且主任务自动变未完成（灰显消失）
+3. 折叠区取消主勾 → 整树回待办，子任务状态保持
+4. 主任务+全部子孙逐个勾完 → 自动聚合（规则 2 回归）
+5. done 沉底：同日期同优先级组内完成卡排在待办卡下方；看板列内同样生效
+6. Fix2 手测 1-4/8 回归（折叠区开合/分组/垫底不遮蔽）
+7. 番茄/统计无回归
+
+**允许触碰**：useTaskActions.ts、boardSort.ts、TaskCard.tsx、ListTaskCard.tsx、tree.ts（如需）、BoardColumn.tsx、Today.tsx、Recent7View.tsx、Tasks.tsx、相关 docs
+**禁止**：electron/*、数据结构、vite.config.ts
+**commit**：`fix(RF-Fix3): 聚合取消级联+折叠区空心框+done 沉底`
+**回滚**：`git reset --hard 4f83c9a`
+
 ---
 
 ## 附录 A：docs/DEV_RULES.md 全文（RF-P1 创建，含 §8）
@@ -474,3 +515,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.3 | RF-P1 验收裁定（952≤1000 达标，归因规划层行数预算误差）；RF-P3b 验收线改为 ≤550+组成校验；三道锁升级四道锁（新增基线锁：派发前规划层核对基线与行数预算） |
 | v1.4 | 新增 **RF-Fix1**（聚合语义树化+aiName 同步，插 P2a 后，规则 4/6 用户拍板）与 **RF-P7 设置中心**（登记卡，P6b 后）；收官动作移至 P7 后；总纲补测试交接规则；P2a 验收记录+四项报备备案 |
 | v1.5 | Fix1 验收记录（矩阵 8/8+回归修复+electron 字面量裁定 grep=3 接受，commit 2044e3f）；新增 **RF-Fix2**（横板已完成折叠区+子任务计时显示+死声明清理，插 Fix1 后）；P2a 补记缩进差异已消除；P6b 登记过度导出 4 处+usePomodoro import 风格；P3c 盘点范围补 Recent7View/Today 日期函数（审查报告全项闭环） |
+| v1.6 | Fix2 验收记录（8/8 PASS+Tasks.tsx 渲染提前落地备案，commit 4f83c9a）；新增 **RF-Fix3**（聚合取消级联+折叠区空心框+done 沉底——**修订 Fix1 规则 1**，用户拍板语义演进）；P2b 范围缩减注记（遗留③已清账）；开工包精益化规则（不重复指读已读文件） |
