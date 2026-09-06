@@ -41,10 +41,26 @@ export default function SectionColumn({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  /* 分区语义：勾选完成不移位——堆叠区 = 未完成 + 已完成但未被聚合的任务（原位灰显）；
-     折叠区 = 已被用户「聚合」的完成任务。子任务永远嵌套跟随父卡 */
-  const stack = tasks.filter((t) => !t.done || !t.aggregated).sort(boardSort)
-  const folded = tasks.filter((t) => t.done && t.aggregated)
+  /* 分区语义（RF-Fix1 树化）：折叠区成员判定唯一依据 = 根任务的 aggregated（沿 parentTaskId 上溯取根，
+     历史散落在子任务上的 aggregated 无视）；例外 = 规则6 散件（自身被「聚合」显式标记的 done 子任务，
+     其主任务未完成/未聚合时单独入折叠区，不拉扯主任务）。
+     堆叠区 = 其余全部（未完成原位 + 已完成但未聚合的灰显原位）；子任务永远嵌套跟随父卡 */
+  const rootOf = (t: Task) => {
+    let cur: Task | undefined = t
+    const seen = new Set<string>([t.id])
+    while (cur?.parentTaskId && !seen.has(cur.parentTaskId)) {
+      seen.add(cur.parentTaskId)
+      cur = tasks.find((x) => x.id === cur!.parentTaskId)
+    }
+    return cur
+  }
+  const isFolded = (t: Task) => {
+    const root = rootOf(t)
+    if (root?.aggregated) return true // 整树判定：根 aggregated
+    return t.done && t.aggregated === true // 规则6 散件：显式聚合的 done 子任务
+  }
+  const stack = tasks.filter((t) => !isFolded(t)).sort(boardSort)
+  const folded = tasks.filter((t) => isFolded(t))
   const stackIds = new Set(stack.map((t) => t.id))
   const foldedIds = new Set(folded.map((t) => t.id))
   const stackRoots = stack.filter((t) => !t.parentTaskId || !stackIds.has(t.parentTaskId))
@@ -131,7 +147,7 @@ export default function SectionColumn({
             暂无任务
           </div>
         ) : (
-          stackRoots.map((t) => <TaskCard key={t.id} task={t} columnTasks={tasks} depth={0} seen={new Set([t.id])} {...card} />)
+          stackRoots.map((t) => <TaskCard key={t.id} task={t} columnTasks={tasks} foldedIds={foldedIds} parentFolded={false} depth={0} seen={new Set([t.id])} {...card} />)
         )}
       </div>
 
@@ -147,7 +163,7 @@ export default function SectionColumn({
           {doneOpen && (
             <div className="mt-2 space-y-2">
               {foldedRoots.map((t) => (
-                <TaskCard key={t.id} task={t} columnTasks={tasks} depth={0} seen={new Set([t.id])} {...card} />
+                <TaskCard key={t.id} task={t} columnTasks={tasks} foldedIds={foldedIds} parentFolded={true} depth={0} seen={new Set([t.id])} {...card} />
               ))}
             </div>
           )}

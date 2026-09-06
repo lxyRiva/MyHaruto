@@ -26,7 +26,7 @@ function defaultDb() {
       harutoMetDate: new Date().toISOString().slice(0, 10),
       currentCharacterId: 'haruto',
       skinId: 'default',
-      aiName: 'Haruto',
+      aiName: 'Haruto', // 须与 src/shared/constants.ts DEFAULT_AI_NAME 保持一致（CJS 无法 require TS）
     },
   }
 }
@@ -46,7 +46,7 @@ function loadDb() {
     if (!db.settings.harutoMetDate) db.settings.harutoMetDate = new Date().toISOString().slice(0, 10)
     if (!db.settings.currentCharacterId) db.settings.currentCharacterId = 'haruto'
     if (!db.settings.skinId) db.settings.skinId = 'default'
-    if (!db.settings.aiName) db.settings.aiName = 'Haruto'
+    if (!db.settings.aiName) db.settings.aiName = 'Haruto' // 同上：须与 constants.DEFAULT_AI_NAME 一致
     for (const t of db.tasks) {
       if (!Array.isArray(t.checklistItems)) t.checklistItems = []
       if (!Array.isArray(t.taskComments)) t.taskComments = []

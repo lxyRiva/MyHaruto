@@ -14,6 +14,8 @@ const PRIO_COLOR: Record<Priority, string | null> = { high: '#ef4444', mid: '#f5
 export default function TaskCard({
   task,
   columnTasks,
+  foldedIds,
+  parentFolded,
   depth,
   seen,
   minutesOf,
@@ -41,7 +43,7 @@ export default function TaskCard({
   onPomodoro,
   onDeleteTaskRecursive,
   onOpenSubTag,
-}: { task: Task; columnTasks: Task[]; depth: number; seen: Set<string> } & CardBundle) {
+}: { task: Task; columnTasks: Task[]; foldedIds: Set<string>; parentFolded: boolean; depth: number; seen: Set<string> } & CardBundle) {
   const cardRef = useRef<HTMLDivElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
   const [pop, setPop] = useState<{ x: number; y: number } | null>(null) // 本卡弹窗坐标（每次打开按自身 rect 现场算）
@@ -62,7 +64,11 @@ export default function TaskCard({
   const prioColor = PRIO_COLOR[prio]
 
   /* 子任务：本列内 parentTaskId 指向本卡的任务（seen 防环）；折叠时只显示第一个 */
-  const children = columnTasks.filter((t) => t.parentTaskId === task.id && !seen.has(t.id))
+  // 子任务跟随父卡所在分区（RF-Fix1 修正）：父卡在折叠区 → 子孙跟随显示（可展开查看）；
+  // 父卡在堆叠区 → 排除已折叠散件（规则6：散件独立显示在折叠区，不在堆叠区父卡下重复）
+  const children = columnTasks.filter(
+    (t) => t.parentTaskId === task.id && !seen.has(t.id) && (parentFolded || !foldedIds.has(t.id))
+  )
   const childSeen = (id: string) => new Set([...seen, id])
   const visibleChildren = expanded ? children : children.slice(0, 1)
 
@@ -268,6 +274,8 @@ export default function TaskCard({
               key={c.id}
               task={c}
               columnTasks={columnTasks}
+              foldedIds={foldedIds}
+              parentFolded={parentFolded}
               depth={depth + 1}
               seen={childSeen(c.id)}
               {...{

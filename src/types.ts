@@ -120,6 +120,6 @@ export interface Db {
     harutoMetDate: string // 首次启动日期，YYYY-MM-DD
     currentCharacterId: string // 当前角色，默认 'haruto'
     skinId: string // 皮肤，默认 'default'
-    aiName: string // AI 角色显示名，默认 'Haruto'（应用名 MyHaruto 不变）
+    aiName: string // AI 角色显示名，默认值见 shared/constants.DEFAULT_AI_NAME（应用名 MyHaruto 不变）
   }
 }

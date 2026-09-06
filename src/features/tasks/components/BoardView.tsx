@@ -205,7 +205,7 @@ export default function BoardView({
                 .filter((t) => !t.parentTaskId)
                 .map((t) => (
                   <div key={t.id} className="w-[248px]">
-                    <TaskCard task={t} columnTasks={ungrouped} depth={0} seen={new Set([t.id])} {...card} />
+                    <TaskCard task={t} columnTasks={ungrouped} foldedIds={new Set<string>()} parentFolded={false} depth={0} seen={new Set([t.id])} {...card} />
                   </div>
                 ))}
             </div>
@@ -267,7 +267,7 @@ export default function BoardView({
               .filter((t) => !t.parentTaskId)
               .map((t) => (
                 <div key={t.id} className="w-[248px]">
-                  <TaskCard task={t} columnTasks={ungrouped} depth={0} seen={new Set([t.id])} {...card} />
+                  <TaskCard task={t} columnTasks={ungrouped} foldedIds={new Set<string>()} parentFolded={false} depth={0} seen={new Set([t.id])} {...card} />
                 </div>
               ))}
           </div>

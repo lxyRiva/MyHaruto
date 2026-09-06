@@ -21,6 +21,7 @@ import SubTagModal, { PALETTE, H2_PALETTE } from './features/tasks/components/Su
 import { usePomodoro } from './features/pomodoro/hooks/usePomodoro'
 import { useHabits } from './features/habits/hooks/useHabits'
 import { useImportantDays } from './features/important-days/hooks/useImportantDays'
+import { DEFAULT_AI_NAME } from './shared/constants'
 
 type PageKey =
   | 'today' | 'tasks' | 'calendar' | 'habits' | 'stats' | 'focus'
@@ -44,7 +45,7 @@ const PLACEHOLDER_PAGE: Partial<Record<PageKey, string>> = {
 }
 
 export default function App() {
-  const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default', aiName: 'Haruto' } })
+  const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default', aiName: DEFAULT_AI_NAME } })
   const [loaded, setLoaded] = useState(false)
   const [page, setPage] = useState<PageKey>('today')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -209,7 +210,7 @@ export default function App() {
 
   // ---------- 派生 ----------
   // AI 显示名兜底：旧库（主进程未重启自愈时）可能还没有 aiName 字段
-  const aiName = db.settings.aiName || 'Haruto'
+  const aiName = db.settings.aiName || DEFAULT_AI_NAME
 
   const taskProps = {
     tasks: db.tasks,

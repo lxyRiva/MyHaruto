@@ -89,14 +89,86 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
       }
     })
 
-  // 勾选完成只变灰原位不动；取消完成时清掉聚合标记（下次完成从原位开始，聚合是显式动作）
+  // 勾选/取消完成（RF-Fix1 聚合语义树化，规则 4/6 用户拍板）：
+  //   树 = 主任务 + 全部子孙（parentTaskId 链）；折叠区成员判定唯一依据 = 根任务的 aggregated
+  //   规则1 勾主任务 → 级联整树 done + aggregated 入折叠区
+  //   规则2 主任务已完成且全部子孙已完成（任意路径达成）→ 根 aggregated=true 自动聚合
+  //   规则3 勾子任务 → 仅自身 done，不触发聚合（除非恰达成规则2）
+  //   规则4 折叠区取消主勾 → 根 done=false + 整树 aggregated 清除回待办；子孙 done 保留（拍板）
+  //   规则5 折叠区取消任一子孙勾 → 整树 aggregated 清除回待办；自身 done=false，其余 done 保持
+  //   规则7 回区后重新达成规则1/2 → 再次自动聚合（可循环）
   const toggleTaskDone = (id: string) =>
-    setDb((d) => ({
-      ...d,
-      tasks: d.tasks.map((t) =>
-        t.id === id ? { ...t, done: !t.done, ...(t.done ? { aggregated: false } : {}) } : t
-      ),
-    }))
+    setDb((d) => {
+      const target = d.tasks.find((t) => t.id === id)
+      if (!target) return d
+      // 沿 parentTaskId 上溯取根任务（防环）
+      const rootOf = (tid: string) => {
+        let cur: Task | undefined = d.tasks.find((t) => t.id === tid)
+        const seen = new Set<string>([tid])
+        while (cur !== undefined && cur.parentTaskId && !seen.has(cur.parentTaskId)) {
+          seen.add(cur.parentTaskId)
+          const next: Task | undefined = d.tasks.find((t) => t.id === cur!.parentTaskId)
+          cur = next
+        }
+        return cur
+      }
+      const root = rootOf(id)
+      if (!root) return d
+      // 树 = 根 + 全部子孙
+      const treeIds = new Set<string>([root.id])
+      let grew = true
+      while (grew) {
+        grew = false
+        for (const t of d.tasks) {
+          if (t.parentTaskId && treeIds.has(t.parentTaskId) && !treeIds.has(t.id)) {
+            treeIds.add(t.id)
+            grew = true
+          }
+        }
+      }
+      const inTree = (t: Task) => treeIds.has(t.id)
+      const willBeDone = !target.done
+
+      if (willBeDone) {
+        if (target.id === root.id) {
+          // 规则1：勾主任务 → 级联整树完成并聚合
+          return { ...d, tasks: d.tasks.map((t) => (inTree(t) ? { ...t, done: true, aggregated: true } : t)) }
+        }
+        // 规则3：勾子任务 → 仅自身完成；若恰达成规则2（根已完成且全树完成）→ 自动聚合
+        const after = d.tasks.map((t) => (inTree(t) && t.id === id ? { ...t, done: true } : t))
+        const allTreeDone = after.filter(inTree).every((t) => t.done)
+        if (root.done && allTreeDone) {
+          return { ...d, tasks: after.map((t) => (inTree(t) ? { ...t, aggregated: true } : t)) }
+        }
+        return {
+          ...d,
+          tasks: d.tasks.map((t) => (t.id === id ? { ...t, done: true } : t)),
+        }
+      }
+
+      if (target.id === root.id) {
+        // 规则4：取消主勾 → 根 done=false + 整树 aggregated 清除回待办；子孙 done 保留
+        return {
+          ...d,
+          tasks: d.tasks.map((t) =>
+            inTree(t)
+              ? t.id === root.id
+                ? { ...t, done: false, aggregated: false }
+                : { ...t, aggregated: false }
+              : t
+          ),
+        }
+      }
+      // 规则5：取消子孙勾 → 整树 aggregated 清除回待办；自身 done=false，其余 done 保持
+      return {
+        ...d,
+        tasks: d.tasks.map((t) => {
+          if (t.id === id) return { ...t, done: false, aggregated: false }
+          if (inTree(t) && t.aggregated) return { ...t, aggregated: false }
+          return t
+        }),
+      }
+    })
 
   // 聚合：把该 Section 下所有 done=true 的任务标记进「已完成」折叠区（数据标记，渲染层按此分区）
   const aggregateSectionDone = (sectionId: string) =>
