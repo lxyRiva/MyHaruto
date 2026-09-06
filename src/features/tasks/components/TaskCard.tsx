@@ -1,9 +1,9 @@
 // 看板任务卡片（RF-P2a 自 BoardView.tsx 原样迁入）：勾选/悬空弹窗/右键九项菜单/子任务嵌套折叠
 import { useEffect, useRef, useState } from 'react'
-import type { Task } from '../../../types'
+import type { Task } from '../../../shared/types'
 import type { Priority } from '../types'
-import { IconBell, IconChat, IconChevron, IconClock } from '../../../components/icons'
-import FloatingMenu from '../../../components/FloatingMenu'
+import { IconBell, IconChat, IconChevron, IconClock } from '../../../shared/components/icons'
+import FloatingMenu from '../../../shared/components/FloatingMenu'
 import { DatePickerModal, RemindPicker, localToday } from './DateTimePickers'
 import { buildTaskContextMenu, type CardBundle } from './taskMenu'
 import { ChecklistAddRow, ChecklistRow } from './ChecklistRow'

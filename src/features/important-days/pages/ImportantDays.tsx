@@ -16,10 +16,10 @@
 // 所有编辑均为行内表单（Electron 下禁用 prompt/alert）。
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import type { ImportantDay, PeriodRecord } from '../types'
+import type { ImportantDay, PeriodRecord } from '../../../shared/types'
 import solarlunar from 'solarlunar'
-import { IconChat, IconChevron } from '../components/icons'
-import FloatingMenu from '../components/FloatingMenu'
+import { IconChat, IconChevron } from '../../../shared/components/icons'
+import FloatingMenu from '../../../shared/components/FloatingMenu'
 
 /* ---------- 日期工具（全部走本地时区，避免 toISOString 的 UTC 偏移问题） ---------- */
 

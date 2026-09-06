@@ -52,12 +52,12 @@ export function DoneFoldSection({
 // 标题下第一行：描述或检查事项第一项（浅色）；第二行：H2标识（色点+名，无分组回退 H1 标签）+ 专注分钟；右侧日期；
 // 子任务嵌套 + 折叠（默认显示第一个，复用看板交互）。
 import { useState } from 'react'
-import type { ChecklistItem, FocusSession, Section, SubTag, Tag, Task } from '../types'
-import { IconChat, IconChevron, IconClock } from './icons'
-import FloatingMenu from './FloatingMenu'
-import { buildTaskContextMenu } from '../features/tasks/components/taskMenu'
-import { DatePickerModal } from '../features/tasks/components/DateTimePickers'
-import type { Priority } from '../features/tasks/types'
+import type { ChecklistItem, FocusSession, Section, SubTag, Tag, Task } from '../../../shared/types'
+import { IconChat, IconChevron, IconClock } from '../../../shared/components/icons'
+import FloatingMenu from '../../../shared/components/FloatingMenu'
+import { buildTaskContextMenu } from './taskMenu'
+import { DatePickerModal } from './DateTimePickers'
+import type { Priority } from '../types'
 
 export interface ListCardCallbacks {
   aiName: string

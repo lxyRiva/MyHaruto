@@ -1,13 +1,13 @@
 // 最近7天视图：已逾期 → 今天（含置顶）→ 未来6天按日期分组；不显示已完成与更远未来
 // 任务卡片与今日页一致（ListTaskCard，左键选中进右栏）；顶部新建任务行（无日期默认不填）
 import { useMemo } from 'react'
-import type { SubTag, Task } from '../types'
+import type { SubTag, Task } from '../../../shared/types'
 import ListTaskCard, { type ListCardCallbacks } from './ListTaskCard'
 import NewTaskBar from './NewTaskBar'
-import { boardSort } from '../features/tasks/utils/boardSort'
-import { isRootAggregated } from '../features/tasks/utils/tree'
+import { boardSort } from '../utils/boardSort'
+import { isRootAggregated } from '../utils/tree'
 import { DoneFoldSection } from './ListTaskCard'
-import type { Priority } from '../features/tasks/types'
+import type { Priority } from '../types'
 
 function localToday(): string {
   const d = new Date()

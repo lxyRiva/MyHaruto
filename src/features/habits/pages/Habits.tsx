@@ -9,7 +9,7 @@
 // - 习惯行右键菜单：编辑名称 / 更换图标 / 设置月目标 / 删除（全部行内编辑，Electron 下禁用 prompt）
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import type { Habit, HabitRecord } from '../types'
+import type { Habit, HabitRecord } from '../../../shared/types'
 
 // 预设 emoji 图标组（新建表单 & 更换图标面板共用）
 const PRESET_ICONS = ['💧', '🏃', '📖', '🧘', '✍️', '🎯', '🥗', '😴', '🎧']

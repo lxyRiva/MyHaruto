@@ -1,7 +1,7 @@
 // 番茄钟状态机（RF-P1 自 App.tsx 原样迁入）：pomo/pomoTarget + 互斥锁 + 四动作
 // completePomo 的 setTimeout 50ms 解锁为既有互斥设计，勿优化
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import type { Db } from '../../../types'
+import type { Db } from '../../../shared/types'
 import { uid } from '../../../shared/utils/id'
 
 export interface Pomo {
@@ -18,7 +18,7 @@ export interface Pomo {
 
 export function usePomodoro(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
   const [pomo, setPomo] = useState<Pomo | null>(null)
-  const [pomoTarget, setPomoTarget] = useState<import('../../../types').Task | null>(null)
+  const [pomoTarget, setPomoTarget] = useState<import('../../../shared/types').Task | null>(null)
   const pomoCompletingRef = useRef(false) // 完成互斥锁（防双组件重复记录）
 
   const startPomo = (minutes: number, mode: 'countdown' | 'stopwatch' = 'countdown') => {

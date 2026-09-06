@@ -1,5 +1,5 @@
 // 看板/列表任务排序（RF-P2a 自 BoardView.tsx 原样迁入）
-import type { Task } from '../../../types'
+import type { Task } from '../../../shared/types'
 import type { Priority } from '../types'
 
 const PRIO_W: Record<Priority, number> = { high: 0, mid: 1, low: 2, none: 3 }

@@ -1,6 +1,6 @@
 // 重要日 & 生理期数据变更（RF-P1 自 App.tsx 原样迁入，逻辑零改动）
 import type { Dispatch, SetStateAction } from 'react'
-import type { Db, ImportantDay } from '../../../types'
+import type { Db, ImportantDay } from '../../../shared/types'
 import { uid } from '../../../shared/utils/id'
 
 export function useImportantDays(db: Db, setDb: Dispatch<SetStateAction<Db>>) {

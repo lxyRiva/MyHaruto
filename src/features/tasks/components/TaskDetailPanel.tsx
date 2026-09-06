@@ -2,11 +2,11 @@
 // 上部详情区可滚动，底部留言区与动作行固定；检查事项行复用看板的 ChecklistRow
 // v1.7 硬性补注：子任务勾选走 onToggleDone（toggleTaskDone 树语义统一入口），禁止 updateTask 直改 done
 import { useState } from 'react'
-import type { ChecklistItem, Section, SubTag, Tag, Task } from '../types'
-import { IconChat, IconCheck, IconTasks } from './icons'
-import { ChecklistAddRow, ChecklistRow } from '../features/tasks/components/ChecklistRow'
-import { RemindPicker } from '../features/tasks/components/DateTimePickers'
-import type { Priority } from '../features/tasks/types'
+import type { ChecklistItem, Section, SubTag, Tag, Task } from '../../../shared/types'
+import { IconChat, IconCheck, IconTasks } from '../../../shared/components/icons'
+import { ChecklistAddRow, ChecklistRow } from './ChecklistRow'
+import { RemindPicker } from './DateTimePickers'
+import type { Priority } from '../types'
 
 export default function TaskDetailPanel({
   task,

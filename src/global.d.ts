@@ -1,4 +1,4 @@
-import type { Db } from './types'
+import type { Db } from './shared/types'
 
 declare global {
   interface Window {

@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 import * as echarts from 'echarts';
 // 项目共享类型：Task（parentTaskId 为空表示主任务）、Tag、
 // FocusSession（番茄钟专注记录，startedAt 为 ISO 字符串）、SleepRecord（date/bedtime）
-import type { Task, Tag, FocusSession, SleepRecord } from '../types';
+import type { Task, Tag, FocusSession, SleepRecord } from '../../../shared/types';
 
 /* ==================== 常量与工具函数 ==================== */
 /** 海蓝主题色（与全局强调色一致） */

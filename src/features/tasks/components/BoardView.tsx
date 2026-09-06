@@ -1,8 +1,8 @@
 // 看板视图主文件（RF-P2a 拆分后）：视图A=H1总览 / 视图B=H2单标签；拆分件见同目录
 import { useMemo, useState } from 'react'
-import type { ChecklistItem, FocusSession, Section, SubTag, Tag, Task } from '../../../types'
+import type { ChecklistItem, FocusSession, Section, SubTag, Tag, Task } from '../../../shared/types'
 import type { Priority } from '../types'
-import { IconChevron } from '../../../components/icons'
+import { IconChevron } from '../../../shared/components/icons'
 import TaskCard from './TaskCard'
 import { default as SectionColumn } from './BoardColumn'
 import { boardSort } from '../utils/boardSort'

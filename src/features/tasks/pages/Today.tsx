@@ -2,13 +2,13 @@
 // 今日页（Step 6 重构）：逾期/今天分组 + NewTaskBar 新建行 + ListTaskCard 列表卡片（左键选中进右栏详情）
 // RF-P2b：旧版递归节点组件及其专属辅助已删（全部页/今日页统一 ListTaskCard + TDP 渲染）；todayStr 保留（P3c 收口）
 import { useMemo } from 'react'
-import type { Task, Tag } from '../types'
+import type { Task, Tag } from '../../../shared/types'
 import ListTaskCard from '../components/ListTaskCard'
 import NewTaskBar from '../components/NewTaskBar'
-import { boardSort } from '../features/tasks/utils/boardSort'
-import { isRootAggregated } from '../features/tasks/utils/tree'
+import { boardSort } from '../utils/boardSort'
+import { isRootAggregated } from '../utils/tree'
 import { DoneFoldSection } from '../components/ListTaskCard'
-import type { Priority } from '../features/tasks/types'
+import type { Priority } from '../types'
 
 export function todayStr() {
   const d = new Date()
@@ -19,9 +19,9 @@ export function todayStr() {
 export default function Today(props: {
   tasks: Task[]
   tags: Tag[]
-  subTags: import('../types').SubTag[]
-  sections: import('../types').Section[]
-  focusSessions: import('../types').FocusSession[]
+  subTags: import('../../../shared/types').SubTag[]
+  sections: import('../../../shared/types').Section[]
+  focusSessions: import('../../../shared/types').FocusSession[]
   aiName: string
   selectedId: string | null
   onSelect: (id: string | null) => void
@@ -29,7 +29,7 @@ export default function Today(props: {
   onToggleDone: (id: string) => void
   onToggleChecklist: (taskId: string, itemId: string) => void
   onAddChecklistItem: (taskId: string, text: string) => void
-  onUpdateChecklistItem: (taskId: string, itemId: string, patch: Partial<import('../types').ChecklistItem>) => void
+  onUpdateChecklistItem: (taskId: string, itemId: string, patch: Partial<import('../../../shared/types').ChecklistItem>) => void
   onDeleteChecklistItem: (taskId: string, itemId: string) => void
   onSetTaskReminder: (id: string, remindAt: string | null, remindDaysBefore: number | null) => void
   onUpdateTaskDue: (id: string, dueDate: string | null) => void

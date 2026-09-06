@@ -1,6 +1,6 @@
 // 番茄钟底部浮动条：选时长 → 倒计时/正计时 → 结束自动计入专注记录（SPEC F1）
 import { useEffect, useState } from 'react'
-import type { Task } from '../types'
+import type { Task } from '../../../shared/types'
 
 export interface PomodoroState {
   taskId: string

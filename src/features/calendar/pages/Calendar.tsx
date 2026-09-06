@@ -14,7 +14,7 @@
 //    b) 旧版 tasksOn 只过滤主任务（!t.parentTaskId），子任务即使有日期也被隐藏 ——
 //       现改为显示全部任务，子任务条目前加「└ 」前缀。
 import { useState } from 'react'
-import type { Section, SubTag, Task, Tag } from '../types'
+import type { Section, SubTag, Task, Tag } from '../../../shared/types'
 
 // 优先级色点颜色（修正4：高红/中橙/低蓝/无不显示）
 const PRIO_DOT: Record<string, string | null> = { high: '#ef4444', mid: '#f59e0b', low: '#3b82f6', none: null }

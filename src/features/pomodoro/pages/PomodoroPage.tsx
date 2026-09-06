@@ -6,7 +6,7 @@
 // - 正计时 stopwatch = 无时间限制，无限往上走（分钟选择器在该模式下隐藏）；
 // - 倒计时 countdown = 选分钟（15/25/45/60 预设 + 自定义 input）。
 import { useEffect, useRef, useState } from 'react'
-import type { Task, FocusSession } from '../types'
+import type { Task, FocusSession } from '../../../shared/types'
 
 /** App 下发的「进行中专注会话」展示状态（与 App 侧共享的接口，字段必须完全一致） */
 export interface PomoDisplay {

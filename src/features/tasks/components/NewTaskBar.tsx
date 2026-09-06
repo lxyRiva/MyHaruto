@@ -1,10 +1,10 @@
 // 新建任务行（今日/最近7天顶部）：输入框 + 日期图标（日期选择器）+ 小三角（优先级四旗 + H2 标签选择面板）
 // 选择 H2 后，任务的 tagId 归属到该 H2 的 h1TagId；sectionId 为 null（列表新建不强制分组）
 import { useRef, useState } from 'react'
-import type { SubTag } from '../types'
-import { IconCalendar, IconChevron } from './icons'
-import { DatePickerModal } from '../features/tasks/components/DateTimePickers'
-import type { Priority } from '../features/tasks/types'
+import type { SubTag } from '../../../shared/types'
+import { IconCalendar, IconChevron } from '../../../shared/components/icons'
+import { DatePickerModal } from './DateTimePickers'
+import type { Priority } from '../types'
 
 const FLAGS: { v: Priority; color: string; label: string }[] = [
   { v: 'high', color: '#ef4444', label: '高' },

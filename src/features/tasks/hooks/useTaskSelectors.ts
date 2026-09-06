@@ -1,6 +1,6 @@
 // 任务派生数据（RF-P1 自 App.tsx 原样迁入）。纯派生 hook：不接收 setDb、无副作用。
 import { useMemo } from 'react'
-import type { Db, Task } from '../../../types'
+import type { Db, Task } from '../../../shared/types'
 
 export function useTaskSelectors(db: Db, selectedId: string | null) {
   const selected = db.tasks.find((t) => t.id === selectedId) ?? null

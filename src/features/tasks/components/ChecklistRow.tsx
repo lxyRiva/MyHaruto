@@ -1,7 +1,7 @@
 // 检查事项行 + 添加行（RF-P2a 自 BoardView.tsx 原样迁入）：弹窗与右栏共用
 import { useEffect, useRef, useState } from 'react'
-import type { ChecklistItem } from '../../../types'
-import { IconBell } from '../../../components/icons'
+import type { ChecklistItem } from '../../../shared/types'
+import { IconBell } from '../../../shared/components/icons'
 
 /* ---------- 检查事项行（悬空弹窗与右栏详情共用）：勾选 + 点击行内编辑 + 闹钟提醒 + 删除 ---------- */
 export function ChecklistRow({

@@ -1,7 +1,7 @@
 // 右键九项菜单构建器 + 卡片回调束类型（RF-P2a 自 BoardView.tsx 原样迁入；含 JSX 故为 .tsx）
 import type { ReactNode } from 'react'
-import type { ChecklistItem, Section, SubTag, Tag, Task } from '../../../types'
-import type { MenuEntry } from '../../../components/FloatingMenu'
+import type { ChecklistItem, Section, SubTag, Tag, Task } from '../../../shared/types'
+import type { MenuEntry } from '../../../shared/components/FloatingMenu'
 import { localToday, pad2 } from './DateTimePickers'
 import type { Priority } from '../types'
 

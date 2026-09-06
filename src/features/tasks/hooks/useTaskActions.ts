@@ -1,6 +1,6 @@
 // 任务/清单/检查事项 数据变更动作（RF-P1 自 App.tsx 原样迁入，逻辑零改动）
 import { useState, type Dispatch, type SetStateAction } from 'react'
-import type { ChecklistItem, Db, Section, SubTag, Tag, Task } from '../../../types'
+import type { ChecklistItem, Db, Section, SubTag, Tag, Task } from '../../../shared/types'
 import { uid } from '../../../shared/utils/id'
 
 export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {

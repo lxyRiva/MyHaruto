@@ -1,12 +1,12 @@
 // 任务页（全部/清单视图，RF-Fix2 起改用 ListTaskCard 渲染 + 底部已完成折叠区垫底）
 // 分组语义与今日/最近7天统一（Fix1）：done 未聚合 → 原日期组灰显原位；根 aggregated → 出组进折叠区
 import { useMemo } from 'react'
-import type { FocusSession, Section, SubTag, Task, Tag } from '../types'
+import type { FocusSession, Section, SubTag, Task, Tag } from '../../../shared/types'
 import { todayStr } from './Today'
 import ListTaskCard, { DoneFoldSection, type ListCardCallbacks } from '../components/ListTaskCard'
 import NewTaskBar from '../components/NewTaskBar'
-import { isRootAggregated } from '../features/tasks/utils/tree'
-import type { Priority } from '../features/tasks/types'
+import { isRootAggregated } from '../utils/tree'
+import type { Priority } from '../types'
 
 export default function Tasks(props: {
   tasks: Task[]
@@ -23,7 +23,7 @@ export default function Tasks(props: {
   onToggleDone: (id: string) => void
   onToggleChecklist: (taskId: string, itemId: string) => void
   onAddChecklistItem: (taskId: string, text: string) => void
-  onUpdateChecklistItem: (taskId: string, itemId: string, patch: Partial<import('../types').ChecklistItem>) => void
+  onUpdateChecklistItem: (taskId: string, itemId: string, patch: Partial<import('../../../shared/types').ChecklistItem>) => void
   onDeleteChecklistItem: (taskId: string, itemId: string) => void
   onSetTaskReminder: (id: string, remindAt: string | null, remindDaysBefore: number | null) => void
   onUpdateTaskDue: (id: string, dueDate: string | null) => void

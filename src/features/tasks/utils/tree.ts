@@ -1,5 +1,5 @@
 // 任务树工具（RF-Fix2 自 BoardColumn 提取，看板与横板视图共用）
-import type { Task } from '../../../types'
+import type { Task } from '../../../shared/types'
 
 // 沿 parentTaskId 上溯取根任务（防环）
 export function rootOf(tasks: Task[], tid: string): Task | undefined {

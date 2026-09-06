@@ -1,13 +1,13 @@
 // 看板 Section 列（RF-P2a 自 BoardView.tsx 原样迁入）：列头操作 + 任务堆叠 + 已完成折叠 + 删除确认
 import { useState } from 'react'
-import type { Section, SubTag, Tag, Task } from '../../../types'
-import { IconChevron } from '../../../components/icons'
-import FloatingMenu from '../../../components/FloatingMenu'
+import type { Section, SubTag, Tag, Task } from '../../../shared/types'
+import { IconChevron } from '../../../shared/components/icons'
+import FloatingMenu from '../../../shared/components/FloatingMenu'
 import TaskCard from './TaskCard'
 import { boardSort } from '../utils/boardSort'
 import { rootOf } from '../utils/tree'
 import type { CardBundle } from './taskMenu'
-import type { MenuEntry } from '../../../components/FloatingMenu'
+import type { MenuEntry } from '../../../shared/components/FloatingMenu'
 
 /* ---------- Section 列：列头（重命名/＋新建任务/⋯六项菜单）+ 任务堆叠 + 已完成折叠区 + 删除确认 ---------- */
 export default function SectionColumn({

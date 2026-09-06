@@ -1,6 +1,6 @@
 // 习惯打卡数据变更（RF-P1 自 App.tsx 原样迁入，逻辑零改动）
 import type { Dispatch, SetStateAction } from 'react'
-import type { Db, Habit } from '../../../types'
+import type { Db, Habit } from '../../../shared/types'
 import { uid } from '../../../shared/utils/id'
 
 export function useHabits(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
