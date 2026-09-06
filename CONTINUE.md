@@ -22,7 +22,7 @@
 
 ## 里程碑速查（详见 docs/PRD.md §5）
 
-四层结构（H1清单→H2标签→Section分组→任务）✅ 全部视图 ✅ → 收尾轮（右键统一✅【P2b 落地】/L1排序⏳【并入 RF-P3c】）→ **重构线进行中：P1/P2a/Fix1-3/P2b ✅（60b0377→38bafa5）、P3a 开发/测试/审查完成（手测发现阻塞 bug，按已审计 diff 落 commit 后接 RF-Fix3a 诊断修复）**（详见 docs/REFACTOR_CARDS.md）→ M5 AI聊天+视觉+人物主页（需智谱API Key）→ M6 AI定时行为 → V2 书影/旅行/看板拖拽/记忆衰减 → V3 小镇/Live2D/移动端
+四层结构（H1清单→H2标签→Section分组→任务）✅ 全部视图 ✅ → 收尾轮（右键统一✅【P2b 落地】/L1排序⏳【并入 RF-P3c】）→ **重构线进行中：P1/P2a/Fix1-3/P2b/P3a ✅（60b0377→85f6d68）、Fix3a ✅ 零代码（环境态根因，排障经验入 DEV_RULES §9），RF-P3b 布局抽取待开工**（详见 docs/REFACTOR_CARDS.md）→ M5 AI聊天+视觉+人物主页（需智谱API Key）→ M6 AI定时行为 → V2 书影/旅行/看板拖拽/记忆衰减 → V3 小镇/Live2D/移动端
 
 ## 团队会话边界（2026-09-06 起强制，全文见 docs/DEV_RULES.md §8）
 
@@ -30,7 +30,7 @@
 - 测试会话只跑验收清单、出测试报告，禁止修改代码；问题回报，开发会话修复。
 - 审查会话开工第一条消息显式声明「切换为审查模式」，全程只读。
 - 规划会话只出卡不改码。各角色经 CONTINUE.md 接力，每卡收尾更新为下一卡状态。
-- 当前阶段：**P3a（全库搬移）开发/测试/审查完成、手测发现阻塞 bug（重要日不可用）——执行序：P3a 按已审计 diff 先落 commit（锚 38bafa5）→ RF-Fix3a 诊断先行修复（取证已推翻图片路径假设，真根因以 console 为准）；bug 池 9 项在 RF-Fix4（P6b 后）；RF-P7 设置中心（Fix4 后，v1.0.0 收官随其后）**。后续循环以 docs/REFACTOR_CARDS.md 为准。
+- 当前阶段：**RF-Fix3a 零代码收官（环境态根因，排障禁令入 DEV_RULES §9）；RF-P3b（布局抽取 L1/L2/MainArea/SettingsModal+nav API，行为零变化，App ≤550+组成校验）已派发；bug 池 9 项在 RF-Fix4（P6b 后）；RF-P7 设置中心（Fix4 后，v1.0.0 收官随其后）**。后续循环以 docs/REFACTOR_CARDS.md 为准。
 
 ## 我自己要会的命令（全部）
 

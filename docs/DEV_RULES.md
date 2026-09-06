@@ -49,3 +49,9 @@
 - 测试会话只跑验收清单、出测试报告，禁止修改任何代码；发现问题回报，由开发会话修复。
 - 审查会话开工第一条消息必须显式声明「切换为审查模式」，全程只读代码与 diff，不改文件。
 - 规划会话只出卡不改码。各角色通过 CONTINUE.md 接力，每卡收尾更新为下一卡状态。
+
+## 9. 运行期环境禁令（2026-09-06 RF-Fix3a 后登记，源自真实排障）
+- 禁止 taskkill //F 强杀 MyHaruto：打断 localStorage（Chromium LevelDB）写盘会导致标记回滚。关应用走正常关闭。
+- 禁止同时开两个 MyHaruto 实例：后开实例的 localStorage 内存化不保存。
+- dev（localhost:5173）与生产（file://dist）的 localStorage 按 origin 隔离，设置不互通是正常行为，不是 bug。
+- 症状诡异（白屏/点不动/状态丢失）先全新启动排除 HMR 坏窗与双实例，再查代码（ELECTRON_ENABLE_LOGGING=1 收渲染进程 console）。
