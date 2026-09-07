@@ -4,8 +4,8 @@ import type { Section, SubTag, Tag, Task } from '../../../shared/types'
 import { IconChevron } from '../../../shared/components/icons'
 import FloatingMenu from '../../../shared/components/FloatingMenu'
 import TaskCard from './TaskCard'
-import { boardSort } from '../utils/boardSort'
-import { rootOf } from '../utils/tree'
+import { taskSort } from '../utils/taskSort'
+import { collapsedOf } from '../utils/taskTree'
 import type { CardBundle } from './taskMenu'
 import type { MenuEntry } from '../../../shared/components/FloatingMenu'
 
@@ -42,16 +42,11 @@ export default function SectionColumn({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  /* 分区语义（RF-Fix1 树化）：折叠区成员判定唯一依据 = 根任务的 aggregated（沿 parentTaskId 上溯取根，
-     历史散落在子任务上的 aggregated 无视）；例外 = 规则6 散件（自身被「聚合」显式标记的 done 子任务，
-     其主任务未完成/未聚合时单独入折叠区，不拉扯主任务）。
+  /* 分区语义（RF-Fix1 树化；RF-Fix3c 改调 taskTree.collapsedOf 唯一实现）：
+     折叠区 = 根任务 aggregated（整树判定）∪ 规则6 散件（显式聚合的 done 子任务）；
      堆叠区 = 其余全部（未完成原位 + 已完成但未聚合的灰显原位）；子任务永远嵌套跟随父卡 */
-  const isFolded = (t: Task) => {
-    const root = rootOf(tasks, t.id)
-    if (root?.aggregated) return true // 整树判定：根 aggregated
-    return t.done && t.aggregated === true // 规则6 散件：显式聚合的 done 子任务
-  }
-  const stack = tasks.filter((t) => !isFolded(t)).sort(boardSort)
+  const isFolded = collapsedOf(tasks)
+  const stack = tasks.filter((t) => !isFolded(t)).sort(taskSort)
   const folded = tasks.filter((t) => isFolded(t))
   const stackIds = new Set(stack.map((t) => t.id))
   const foldedIds = new Set(folded.map((t) => t.id))

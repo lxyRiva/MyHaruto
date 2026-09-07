@@ -37,7 +37,7 @@ export default function MainArea({
   db, aiName,
   selected, selectedChildren, setSelectedId,
   boardProps, listViewProps,
-  updateTask, addTask, toggleTaskDone, deleteTask, addSubtaskInline,
+  updateTask, addTask, toggleTaskDone, deleteTaskTree, addSubtaskInline,
   toggleChecklistItem, addChecklistItem, updateChecklistItem, deleteChecklistItem,
   openH2,
   pomo, pomoTarget, setPomoTarget, startPomo, togglePomo, abandonPomo, completePomo,
@@ -59,7 +59,7 @@ export default function MainArea({
   updateTask: TaskActions['updateTask']
   addTask: TaskActions['addTask']
   toggleTaskDone: TaskActions['toggleTaskDone']
-  deleteTask: TaskActions['deleteTask']
+  deleteTaskTree: TaskActions['deleteTaskTree']
   addSubtaskInline: TaskActions['addSubtaskInline']
   toggleChecklistItem: TaskActions['toggleChecklistItem']
   addChecklistItem: TaskActions['addChecklistItem']
@@ -216,7 +216,7 @@ export default function MainArea({
               onToggleDone={toggleTaskDone}
               onAddSubtask={addSubtaskInline}
               onPomodoro={(t) => setPomoTarget(t)}
-              onDeleteTask={(id) => { deleteTask(id); setSelectedId(null) }}
+              onDeleteTask={(id) => { deleteTaskTree(id); setSelectedId(null) }}
               onToggleChecklist={toggleChecklistItem}
               onAddChecklistItem={addChecklistItem}
               onUpdateChecklistItem={updateChecklistItem}

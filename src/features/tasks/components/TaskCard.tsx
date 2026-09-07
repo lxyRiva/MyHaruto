@@ -1,4 +1,5 @@
 // 看板任务卡片（RF-P2a 自 BoardView.tsx 原样迁入）：勾选/悬空弹窗/右键九项菜单/子任务嵌套折叠
+// RF-Fix3c：meta 行改消费 taskMeta.buildTaskMeta（唯一组装）；删除确认改接共享 modal
 import { useEffect, useRef, useState } from 'react'
 import type { Task } from '../../../shared/types'
 import type { Priority } from '../types'
@@ -7,8 +8,8 @@ import FloatingMenu from '../../../shared/components/FloatingMenu'
 import { DatePickerModal, RemindPicker, localToday } from './DateTimePickers'
 import { buildTaskContextMenu, type CardBundle } from './taskMenu'
 import { ChecklistAddRow, ChecklistRow } from './ChecklistRow'
-
-const PRIO_COLOR: Record<Priority, string | null> = { high: '#ef4444', mid: '#f59e0b', low: '#3b82f6', none: null }
+import { buildTaskMeta, checklistDefaultMode } from '../utils/taskMeta'
+import TaskDeleteConfirmModal from './TaskDeleteConfirmModal'
 
 /* ---------- 任务卡片：勾选框 + 优先级点 + 折叠三角 + meta + 悬空弹窗 + 右键菜单 ---------- */
 export default function TaskCard({
@@ -41,13 +42,13 @@ export default function TaskCard({
   onSetPriority,
   onSetMasterTask,
   onPomodoro,
-  onDeleteTaskRecursive,
+  onDeleteTaskTree,
   onOpenSubTag,
 }: { task: Task; columnTasks: Task[]; foldedIds: Set<string>; parentFolded: boolean; depth: number; seen: Set<string> } & CardBundle) {
   const cardRef = useRef<HTMLDivElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
   const [pop, setPop] = useState<{ x: number; y: number } | null>(null) // 本卡弹窗坐标（每次打开按自身 rect 现场算）
-  const [tab, setTab] = useState<'text' | 'checklist'>('text')
+  const [tab, setTab] = useState<'text' | 'checklist'>(checklistDefaultMode(task)) // 检查事项默认视图（taskMeta 唯一实现）
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [subInput, setSubInput] = useState(false)
   const [expanded, setExpanded] = useState(false) // 子任务折叠：默认只显示第一个
@@ -57,11 +58,11 @@ export default function TaskCard({
   const [pickingDate, setPickingDate] = useState(false) // 行内日期选择（菜单"选择日期…"）
   const [confirmDelete, setConfirmDelete] = useState(false) // 修正2：删除任务确认
   const popOpen = activePopupId === task.id && !!pop
-  const minutes = minutesOf(task.id)
+  // meta 行唯一组装点（taskMeta.buildTaskMeta，Fix3c 单点化）
+  const meta = buildTaskMeta(task, { minutesOf, tagMap: new Map(tags.map((t) => [t.id, t])) })
+  const { dateText, minutes } = meta
   const hasComments = task.taskComments.length > 0
   const today = localToday()
-  const prio = (task.priority ?? 'none') as Priority
-  const prioColor = PRIO_COLOR[prio]
 
   /* 子任务：本列内 parentTaskId 指向本卡的任务（seen 防环）；折叠时只显示第一个 */
   // 子任务跟随父卡所在分区（RF-Fix1 修正）：父卡在折叠区 → 子孙跟随显示（可展开查看）；
@@ -152,7 +153,7 @@ export default function TaskCard({
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1.5">
-            {prioColor && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: prioColor }} title={`优先级：${prio}`} />}
+            {meta.priorityFlag && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.priorityFlag }} title={`优先级：${(task.priority ?? 'none') as Priority}`} />}
             <div
               className={`min-w-0 flex-1 text-[13px] leading-snug break-all ${
                 task.done ? 'text-neutral-400 line-through' : 'text-neutral-700 dark:text-neutral-200'
@@ -175,8 +176,8 @@ export default function TaskCard({
             )}
           </div>
           <div className="mt-1 flex items-center gap-2.5 text-[11px]">
-            {task.dueDate &&
-              (task.dueDate === today ? (
+            {dateText &&
+              (dateText === '今天' ? (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -196,7 +197,7 @@ export default function TaskCard({
                   className="tabular-nums text-neutral-600 hover:text-haruto-sea hover:underline dark:text-neutral-300"
                   title="点击修改日期与提醒"
                 >
-                  {task.dueDate.slice(5).replace('-', '/')}
+                  {dateText}
                 </button>
               ))}
             {task.remindAt && (
@@ -282,7 +283,7 @@ export default function TaskCard({
                 minutesOf, allTasks, aiName, tags, subTags, sections, activePopupId, onRequestPopup, onClosePopup,
                 onToggleDone, onToggleChecklist, onAddChecklistItem, onUpdateChecklistItem, onDeleteChecklistItem,
                 onSetTaskReminder, onUpdateTaskDue, onAddSubtask, onUpdateTag, onUpdateTaskSection,
-                onTogglePinned, onSetPriority, onSetMasterTask, onPomodoro, onDeleteTaskRecursive, onOpenSubTag,
+                onTogglePinned, onSetPriority, onSetMasterTask, onPomodoro, onDeleteTaskTree, onOpenSubTag,
               }}
             />
           ))}
@@ -448,34 +449,16 @@ export default function TaskCard({
         />
       )}
 
-      {/* 修正2：删除任务确认（递归删子孙） */}
+      {/* 修正2：删除任务确认（递归删子孙；Fix3c 改接共享 modal） */}
       {confirmDelete && (
-        <div
-          className="fixed inset-0 z-[60] grid place-items-center bg-black/30 animate-[fadeSlideIn_.15s_ease]"
-          onMouseDown={(e) => e.target === e.currentTarget && setConfirmDelete(false)}
-        >
-          <div className="w-72 rounded-2xl border border-neutral-200 bg-white p-5 shadow-2xl dark:border-neutral-700 dark:bg-neutral-800">
-            <div className="text-sm font-semibold select-none">删除该任务及其所有子任务？</div>
-            <div className="mt-1 text-xs text-neutral-400 select-none">{task.title}</div>
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={() => {
-                  onDeleteTaskRecursive(task.id)
-                  setConfirmDelete(false)
-                }}
-                className="flex-1 rounded-lg bg-red-500 py-2 text-xs font-medium text-white transition-opacity select-none hover:opacity-90"
-              >
-                确认删除
-              </button>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="flex-1 rounded-lg border border-neutral-200 py-2 text-xs text-neutral-500 transition-colors select-none hover:text-neutral-700 dark:border-neutral-600 dark:hover:text-neutral-200"
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
+        <TaskDeleteConfirmModal
+          taskTitle={task.title}
+          onConfirm={() => {
+            onDeleteTaskTree(task.id)
+            setConfirmDelete(false)
+          }}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </div>
   )

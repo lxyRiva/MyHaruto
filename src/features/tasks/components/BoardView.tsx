@@ -5,7 +5,7 @@ import type { Priority } from '../types'
 import { IconChevron } from '../../../shared/components/icons'
 import TaskCard from './TaskCard'
 import { default as SectionColumn } from './BoardColumn'
-import { boardSort } from '../utils/boardSort'
+import { taskSort } from '../utils/taskSort'
 import type { CardBundle } from './taskMenu'
 
 /* ---------- H2 空分组引导 ---------- */
@@ -67,7 +67,7 @@ export interface BoardCallbacks {
   onSetPriority: (id: string, p: Priority) => void
   onSetMasterTask: (id: string, masterId: string | null) => void
   onPomodoro: (t: Task) => void
-  onDeleteTaskRecursive: (id: string) => void
+  onDeleteTaskTree: (id: string) => void
   onOpenSubTag: (subTagId: string) => void
 }
 
@@ -104,7 +104,7 @@ export default function BoardView({
   onSetPriority,
   onSetMasterTask,
   onPomodoro,
-  onDeleteTaskRecursive,
+  onDeleteTaskTree,
   onOpenSubTag,
   h1TagId,
   activeSubTagId,
@@ -124,7 +124,7 @@ export default function BoardView({
 
   const byOrder = (a: { isPinned: boolean; order: number }, b: { isPinned: boolean; order: number }) =>
     a.isPinned === b.isPinned ? a.order - b.order : a.isPinned ? -1 : 1
-  const sortUngrouped = (list: Task[]) => [...list].sort(boardSort)
+  const sortUngrouped = (list: Task[]) => [...list].sort(taskSort)
 
   // 悬空弹窗全局互斥：同一时刻只有一张卡片的弹窗（Bug1 修复）
   const [activePopupId, setActivePopupId] = useState<string | null>(null)
@@ -153,7 +153,7 @@ export default function BoardView({
     onSetPriority,
     onSetMasterTask,
     onPomodoro,
-    onDeleteTaskRecursive,
+    onDeleteTaskTree,
     onOpenSubTag,
   }
   const colBase = {

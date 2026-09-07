@@ -5,8 +5,8 @@ import { useMemo } from 'react'
 import type { Task, Tag } from '../../../shared/types'
 import ListTaskCard from '../components/ListTaskCard'
 import NewTaskBar from '../components/NewTaskBar'
-import { boardSort } from '../utils/boardSort'
-import { isRootAggregated } from '../utils/tree'
+import { taskSort } from '../utils/taskSort'
+import { collapsedOf } from '../utils/taskTree'
 import { DoneFoldSection } from '../components/ListTaskCard'
 import type { Priority } from '../types'
 
@@ -39,7 +39,7 @@ export default function Today(props: {
   onTogglePinned: (id: string) => void
   onSetPriority: (id: string, p: Priority) => void
   onPomodoro: (t: Task) => void
-  onDeleteTaskRecursive: (id: string) => void
+  onDeleteTaskTree: (id: string) => void
   onOpenSubTag: (subTagId: string) => void
   onSetMasterTask: (id: string, masterId: string | null) => void
 }) {
@@ -52,19 +52,20 @@ export default function Today(props: {
 
   const today = todayStr()
   const mainTasks = tasks.filter((t) => !t.parentTaskId)
+  const foldedOf = collapsedOf(tasks)
   // RF-Fix2 语义：done 未聚合 → 原分组灰显原位；根 aggregated → 出分组进底部「已完成」折叠区
   // 已逾期：今天之前到期（未完成或未聚合的已完成），最久远的在最上
   const overdue = mainTasks
-    .filter((t) => t.dueDate && t.dueDate < today && (!t.done || !isRootAggregated(tasks, t)))
+    .filter((t) => t.dueDate && t.dueDate < today && (!t.done || !foldedOf(t)))
     .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
   const overdueIds = new Set(overdue.map((t) => t.id))
   // 今天：今天到期 + 置顶今日（逾期的不重复出现）
   const todays = mainTasks
-    .filter((t) => !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday) && (!t.done || !isRootAggregated(tasks, t)))
-    .sort(boardSort)
+    .filter((t) => !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday) && (!t.done || !foldedOf(t)))
+    .sort(taskSort)
   // 已完成折叠区成员：现有筛选（逾期/今天/置顶）∩ 根 aggregated
   const doneRoots = mainTasks.filter(
-    (t) => t.done && isRootAggregated(tasks, t) && ((t.dueDate && t.dueDate < today) || t.dueDate === today || t.isPinnedToday)
+    (t) => t.done && foldedOf(t) && ((t.dueDate && t.dueDate < today) || t.dueDate === today || t.isPinnedToday)
   )
 
   const cardBase = {
@@ -85,7 +86,7 @@ export default function Today(props: {
     onTogglePinned: props.onTogglePinned,
     onSetPriority: props.onSetPriority,
     onPomodoro: props.onPomodoro,
-    onDeleteTaskRecursive: props.onDeleteTaskRecursive,
+    onDeleteTaskTree: props.onDeleteTaskTree,
     onOpenSubTag: props.onOpenSubTag,
     onSetMasterTask: props.onSetMasterTask,
   }

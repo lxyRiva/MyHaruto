@@ -1,8 +1,10 @@
 // 右键九项菜单构建器 + 卡片回调束类型（RF-P2a 自 BoardView.tsx 原样迁入；含 JSX 故为 .tsx）
+// RF-Fix3c：关联候选的子孙排除改调 taskDelete.collectTreeIds（原内联第三处树遍历，单点化）
 import type { ReactNode } from 'react'
 import type { ChecklistItem, Section, SubTag, Tag, Task } from '../../../shared/types'
 import type { MenuEntry } from '../../../shared/components/FloatingMenu'
 import { localToday, pad2 } from './DateTimePickers'
+import { collectTreeIds } from '../utils/taskDelete'
 import type { Priority } from '../types'
 
 export const PRIO_META: { v: Priority; label: string; color: string }[] = [
@@ -50,7 +52,7 @@ export interface CardBundle {
   onSetPriority: (id: string, p: Priority) => void
   onSetMasterTask: (id: string, masterId: string | null) => void
   onPomodoro: (t: Task) => void
-  onDeleteTaskRecursive: (id: string) => void // 修正2：递归删除任务及子孙
+  onDeleteTaskTree: (id: string) => void // Fix3c：删除任务树（目标+全部子孙），原 onDeleteTaskRecursive
   onOpenSubTag: (subTagId: string) => void // 修正4：点击 H2 归属跳转看板视图
 }
 
@@ -82,18 +84,8 @@ export function buildTaskContextMenu(
   const prio = (task.priority ?? 'none') as Priority
   const today = localToday()
 
-  // 关联候选：全部主任务 − 自己 − 自己的子孙（防环）
-  const banned = new Set<string>([task.id])
-  let grew = true
-  while (grew) {
-    grew = false
-    for (const t of d.allTasks) {
-      if (t.parentTaskId && banned.has(t.parentTaskId) && !banned.has(t.id)) {
-        banned.add(t.id)
-        grew = true
-      }
-    }
-  }
+  // 关联候选：全部主任务 − 自己 − 自己的子孙（防环；collectTreeIds 含自身+子孙）
+  const banned = collectTreeIds(d.allTasks, task.id)
   const linkable = d.allTasks.filter((t) => !t.parentTaskId && !banned.has(t.id))
 
   const sectionEntry = (sec: Section): MenuEntry => ({

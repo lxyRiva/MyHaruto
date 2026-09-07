@@ -5,7 +5,7 @@ import type { FocusSession, Section, SubTag, Task, Tag } from '../../../shared/t
 import { todayStr } from './Today'
 import ListTaskCard, { DoneFoldSection, type ListCardCallbacks } from '../components/ListTaskCard'
 import NewTaskBar from '../components/NewTaskBar'
-import { isRootAggregated } from '../utils/tree'
+import { collapsedOf } from '../utils/taskTree'
 import type { Priority } from '../types'
 
 export default function Tasks(props: {
@@ -34,11 +34,12 @@ export default function Tasks(props: {
   onSetPriority: (id: string, p: Priority) => void
   onSetMasterTask: (id: string, masterId: string | null) => void
   onPomodoro: (t: Task) => void
-  onDeleteTaskRecursive: (id: string) => void
+  onDeleteTaskTree: (id: string) => void
   onOpenSubTag: (subTagId: string) => void
 }) {
   const { tasks, tags, subTags, sections, focusSessions, aiName, activeListId, selectedId, onSelect, minutesOf } = props
   const today = todayStr()
+  const foldedOf = collapsedOf(tasks)
   // 筛选：按 L2 选中项（全部/今天/H1 标签）
   const filtered = useMemo(
     () =>
@@ -55,7 +56,7 @@ export default function Tasks(props: {
   )
 
   // RF-Fix2 语义：done 未聚合 → 原日期组灰显原位；根 aggregated → 出组进底部折叠区
-  const notFolded = (t: Task) => !t.done || !isRootAggregated(tasks, t)
+  const notFolded = (t: Task) => !t.done || !foldedOf(t)
   const groups: { name: string; items: Task[] }[] = [
     { name: '今天', items: filtered.filter((t) => (t.dueDate === today || t.isPinnedToday) && notFolded(t)) },
     { name: '即将到来', items: filtered.filter((t) => t.dueDate && t.dueDate > today && notFolded(t)) },
@@ -63,7 +64,7 @@ export default function Tasks(props: {
     { name: '无日期', items: filtered.filter((t) => !t.dueDate && notFolded(t)) },
   ]
   // 已完成折叠区成员：现有筛选 ∩ 根 aggregated（根任务，子孙嵌套跟随）
-  const doneRoots = filtered.filter((t) => t.done && isRootAggregated(tasks, t))
+  const doneRoots = filtered.filter((t) => t.done && foldedOf(t))
   const activeTag = activeListId !== 'all' && activeListId !== 'today' ? tags.find((t) => t.id === activeListId) : null
 
   const callbacks: ListCardCallbacks = {
@@ -85,7 +86,7 @@ export default function Tasks(props: {
     onSetPriority: props.onSetPriority,
     onSetMasterTask: props.onSetMasterTask,
     onPomodoro: props.onPomodoro,
-    onDeleteTaskRecursive: props.onDeleteTaskRecursive,
+    onDeleteTaskTree: props.onDeleteTaskTree,
     onOpenSubTag: props.onOpenSubTag,
   }
   const cardOf = (t: Task) => (

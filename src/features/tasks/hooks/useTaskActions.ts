@@ -1,7 +1,10 @@
 // 任务/清单/检查事项 数据变更动作（RF-P1 自 App.tsx 原样迁入，逻辑零改动）
+// RF-Fix3c：树遍历/删除范围改调 utils 纯函数（taskTree/taskDelete，§10 单点化），规则语义不变
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import type { ChecklistItem, Db, Section, SubTag, Tag, Task } from '../../../shared/types'
 import { uid } from '../../../shared/utils/id'
+import { rootOf, treeOf, isTreeComplete } from '../utils/taskTree'
+import { collectTreeIds } from '../utils/taskDelete'
 
 export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
   // ---------- 任务 ----------
@@ -45,24 +48,12 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
   const updateTask = (id: string, patch: Partial<Task>) =>
     setDb((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
 
-  const deleteTask = (id: string) =>
-    setDb((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id && t.parentTaskId !== id) }))
-
-  // 看板右键删除：递归删除目标 + 全部子孙（修正2）
-  const deleteTaskRecursive = (id: string) =>
+  // 删除任务树（RF-Fix3c 合并原 deleteTask（自身+一层子）与 deleteTaskRecursive（递归）双轨：
+  // 统一为「目标 + 全部子孙」，范围唯一实现 = taskDelete.collectTreeIds）
+  const deleteTaskTree = (id: string) =>
     setDb((d) => {
-      const ids = new Set<string>([id])
-      let grew = true
-      while (grew) {
-        grew = false
-        for (const t of d.tasks) {
-          if (t.parentTaskId && ids.has(t.parentTaskId) && !ids.has(t.id)) {
-            ids.add(t.id)
-            grew = true
-          }
-        }
-      }
-      return { ...d, tasks: d.tasks.filter((t) => !ids.has(t.id)) }
+      const doomed = collectTreeIds(d.tasks, id)
+      return { ...d, tasks: d.tasks.filter((t) => !doomed.has(t.id)) }
     })
 
   const updateTaskTag = (id: string, tagId: string | null) => updateTask(id, { tagId })
@@ -71,17 +62,7 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
   const updateTaskSection = (id: string, sectionId: string | null) =>
     setDb((d) => {
       if (!d.tasks.some((t) => t.id === id)) return d
-      const ids = new Set<string>([id])
-      let grew = true
-      while (grew) {
-        grew = false
-        for (const t of d.tasks) {
-          if (t.parentTaskId && ids.has(t.parentTaskId) && !ids.has(t.id)) {
-            ids.add(t.id)
-            grew = true
-          }
-        }
-      }
+      const ids = collectTreeIds(d.tasks, id)
       const h1TagId = d.subTags.find((st) => st.id === d.sections.find((s) => s.id === sectionId)?.subTagId)?.h1TagId || null
       return {
         ...d,
@@ -101,31 +82,11 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
     setDb((d) => {
       const target = d.tasks.find((t) => t.id === id)
       if (!target) return d
-      // 沿 parentTaskId 上溯取根任务（防环）
-      const rootOf = (tid: string) => {
-        let cur: Task | undefined = d.tasks.find((t) => t.id === tid)
-        const seen = new Set<string>([tid])
-        while (cur !== undefined && cur.parentTaskId && !seen.has(cur.parentTaskId)) {
-          seen.add(cur.parentTaskId)
-          const next: Task | undefined = d.tasks.find((t) => t.id === cur!.parentTaskId)
-          cur = next
-        }
-        return cur
-      }
-      const root = rootOf(id)
+      // 沿 parentTaskId 上溯取根任务（taskTree.rootOf，防环）
+      const root = rootOf(d.tasks, id)
       if (!root) return d
-      // 树 = 根 + 全部子孙
-      const treeIds = new Set<string>([root.id])
-      let grew = true
-      while (grew) {
-        grew = false
-        for (const t of d.tasks) {
-          if (t.parentTaskId && treeIds.has(t.parentTaskId) && !treeIds.has(t.id)) {
-            treeIds.add(t.id)
-            grew = true
-          }
-        }
-      }
+      // 树 = 根 + 全部子孙（taskTree.treeOf）
+      const treeIds = new Set(treeOf(d.tasks, root.id).map((t) => t.id))
       const inTree = (t: Task) => treeIds.has(t.id)
       const willBeDone = !target.done
 
@@ -139,8 +100,7 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
         }
         // 规则3/2：勾子任务 → 仅自身完成；若恰达成规则2（根已完成且全树完成）→ 自动聚合
         const after = d.tasks.map((t) => (inTree(t) && t.id === id ? { ...t, done: true } : t))
-        const allTreeDone = after.filter(inTree).every((t) => t.done)
-        if (root.done && allTreeDone) {
+        if (root.done && isTreeComplete(after, root.id)) {
           return { ...d, tasks: after.map((t) => (inTree(t) ? { ...t, aggregated: true } : t)) }
         }
         return {
@@ -371,7 +331,7 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
     }))
 
   return {
-    addTask, addTaskWithOptions, addSubtask, updateTask, deleteTask, deleteTaskRecursive,
+    addTask, addTaskWithOptions, addSubtask, updateTask, deleteTaskTree,
     updateTaskTag, updateTaskSection, toggleTaskDone, aggregateSectionDone, addSubtaskInline,
     togglePinnedToday, setMasterTask, setTaskPriority, setTaskReminder, updateTaskDue, addTaskToSection,
     toggleChecklistItem, addChecklistItem, updateChecklistItem, deleteChecklistItem,

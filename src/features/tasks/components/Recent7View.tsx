@@ -4,8 +4,8 @@ import { useMemo } from 'react'
 import type { SubTag, Task } from '../../../shared/types'
 import ListTaskCard, { type ListCardCallbacks } from './ListTaskCard'
 import NewTaskBar from './NewTaskBar'
-import { boardSort } from '../utils/boardSort'
-import { isRootAggregated } from '../utils/tree'
+import { taskSort } from '../utils/taskSort'
+import { collapsedOf } from '../utils/taskTree'
 import { DoneFoldSection } from './ListTaskCard'
 import type { Priority } from '../types'
 
@@ -50,27 +50,28 @@ export default function Recent7View(props: {
     onSetPriority: props.onSetPriority,
     onSetMasterTask: props.onSetMasterTask,
     onPomodoro: props.onPomodoro,
-    onDeleteTaskRecursive: props.onDeleteTaskRecursive,
+    onDeleteTaskTree: props.onDeleteTaskTree,
     onOpenSubTag: props.onOpenSubTag,
   }
 
   const today = localToday()
+  const foldedOf = collapsedOf(tasks)
   const mainTasks = useMemo(() => tasks.filter((t) => !t.parentTaskId), [tasks])
 
   // RF-Fix2 语义：done 未聚合 → 原分组灰显原位；根 aggregated → 出分组进底部「已完成」折叠区
   const overdue = mainTasks
-    .filter((t) => t.dueDate && t.dueDate < today && (!t.done || !isRootAggregated(tasks, t)))
+    .filter((t) => t.dueDate && t.dueDate < today && (!t.done || !foldedOf(t)))
     .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
   const overdueIds = new Set(overdue.map((t) => t.id))
   const todays = mainTasks
-    .filter((t) => !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday) && (!t.done || !isRootAggregated(tasks, t)))
-    .sort(boardSort)
+    .filter((t) => !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday) && (!t.done || !foldedOf(t)))
+    .sort(taskSort)
 
   const futureGroups = Array.from({ length: 6 }, (_, i) => {
     const date = addDays(today, i + 1)
     const items = mainTasks
-      .filter((t) => t.dueDate === date && (!t.done || !isRootAggregated(tasks, t)))
-      .sort(boardSort)
+      .filter((t) => t.dueDate === date && (!t.done || !foldedOf(t)))
+      .sort(taskSort)
     const label = i === 0 ? '明天' : `${Number(date.slice(5, 7))}月${Number(date.slice(8))}日`
     return { date, label, items }
   }).filter((g) => g.items.length > 0)
@@ -80,7 +81,7 @@ export default function Recent7View(props: {
   const doneRoots = mainTasks.filter(
     (t) =>
       t.done &&
-      isRootAggregated(tasks, t) &&
+      foldedOf(t) &&
       ((t.dueDate && t.dueDate < today) || t.dueDate === today || (t.dueDate && futureDates.has(t.dueDate)))
   )
 

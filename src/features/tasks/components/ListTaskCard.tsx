@@ -57,6 +57,8 @@ import { IconChat, IconChevron, IconClock } from '../../../shared/components/ico
 import FloatingMenu from '../../../shared/components/FloatingMenu'
 import { buildTaskContextMenu } from './taskMenu'
 import { DatePickerModal } from './DateTimePickers'
+import { buildTaskMeta } from '../utils/taskMeta'
+import TaskDeleteConfirmModal from './TaskDeleteConfirmModal'
 import type { Priority } from '../types'
 
 export interface ListCardCallbacks {
@@ -78,15 +80,8 @@ export interface ListCardCallbacks {
   onSetPriority: (id: string, p: Priority) => void
   onSetMasterTask: (id: string, masterId: string | null) => void
   onPomodoro: (t: Task) => void
-  onDeleteTaskRecursive: (id: string) => void
+  onDeleteTaskTree: (id: string) => void
   onOpenSubTag: (subTagId: string) => void // 修正4：点击 H2 归属跳转看板
-}
-
-const PRIO_COLOR: Record<Priority, string | null> = { high: '#ef4444', mid: '#f59e0b', low: '#3b82f6', none: null }
-
-function localToday(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export default function ListTaskCard({
@@ -115,7 +110,7 @@ export default function ListTaskCard({
   onSetPriority,
   onSetMasterTask,
   onPomodoro,
-  onDeleteTaskRecursive,
+  onDeleteTaskTree,
   onOpenSubTag,
 }: {
   task: Task
@@ -132,15 +127,15 @@ export default function ListTaskCard({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [dateOpen, setDateOpen] = useState(false)
   const [pickingDate, setPickingDate] = useState(false)
-  const today = localToday()
-  const prio = (task.priority ?? 'none') as Priority
-  const prioColor = PRIO_COLOR[prio]
-  const minutes = minutesOf(task.id)
 
-  // H2 标识：sectionId → Section → SubTag；无分组回退 H1 标签（tagId）
-  const h2 = subTags.find((st) => st.id === sections.find((s) => s.id === task.sectionId)?.subTagId)
-  const h1Tag = tags.find((t) => t.id === task.tagId)
-  const badge = h2 ? { name: h2.name, color: h2.color, emoji: h2.emoji } : h1Tag ? { name: h1Tag.name, color: h1Tag.color, emoji: '' } : null
+  // meta 行唯一组装点（taskMeta.buildTaskMeta，Fix3c 单点化）
+  const meta = buildTaskMeta(task, {
+    minutesOf,
+    tagMap: new Map(tags.map((t) => [t.id, t])),
+    sections,
+    subTags,
+  })
+  const { tagBadge: badge, dateText, minutes } = meta
 
   // 标题下第一行：描述第一行，否则检查事项第一项
   const firstLine = task.description
@@ -183,12 +178,12 @@ export default function ListTaskCard({
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1.5">
-            {prioColor && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: prioColor }} title={`优先级：${prio}`} />}
+            {meta.priorityFlag && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.priorityFlag }} title={`优先级：${(task.priority ?? 'none') as Priority}`} />}
             <div className={`min-w-0 flex-1 text-sm leading-snug break-all ${task.done ? 'text-neutral-400 line-through' : 'text-neutral-700 dark:text-neutral-200'}`}>
               {task.title}
             </div>
-            {/* 右侧日期：今天紫色，其他黑色；无日期不显示 */}
-            {task.dueDate && (
+            {/* 右侧日期：今天紫色，其他黑色；无日期不显示（dateText 由 taskMeta 唯一组装） */}
+            {dateText && (
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -196,10 +191,10 @@ export default function ListTaskCard({
                 }}
                 title="点击修改日期与提醒"
                 className={`shrink-0 text-[11px] tabular-nums hover:text-haruto-sea hover:underline ${
-                  task.dueDate === today ? 'font-medium text-purple-500' : 'text-neutral-600 dark:text-neutral-300'
+                  dateText === '今天' ? 'font-medium text-purple-500' : 'text-neutral-600 dark:text-neutral-300'
                 }`}
               >
-                {task.dueDate === today ? '今天' : task.dueDate.slice(5).replace('-', '/')}
+                {dateText}
               </button>
             )}
             {children.length > 0 && (
@@ -224,11 +219,11 @@ export default function ListTaskCard({
                 ) : (
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: badge.color }} />
                 )}
-                {h2 ? (
+                {badge.kind === 'h2' ? (
                   <span
                     onClick={(e) => {
                       e.stopPropagation()
-                      onOpenSubTag(h2.id)
+                      onOpenSubTag(badge.id)
                     }}
                     className="cursor-pointer truncate hover:text-haruto-sea hover:underline"
                     style={{ color: undefined }}
@@ -314,7 +309,7 @@ export default function ListTaskCard({
                 aiName, tags, subTags, sections, onToggleDone, onToggleChecklist, onAddChecklistItem,
                 onUpdateChecklistItem, onDeleteChecklistItem, onSetTaskReminder, onUpdateTaskDue, onAddSubtask,
                 onUpdateTag, onUpdateTaskSection, onTogglePinned, onSetPriority, onSetMasterTask, onPomodoro,
-                onDeleteTaskRecursive, onOpenSubTag,
+                onDeleteTaskTree, onOpenSubTag,
               }}
             />
           ))}
@@ -372,32 +367,14 @@ export default function ListTaskCard({
       )}
 
       {confirmDelete && (
-        <div
-          className="fixed inset-0 z-[60] grid place-items-center bg-black/30 animate-[fadeSlideIn_.15s_ease]"
-          onMouseDown={(e) => e.target === e.currentTarget && setConfirmDelete(false)}
-        >
-          <div className="w-72 rounded-2xl border border-neutral-200 bg-white p-5 shadow-2xl dark:border-neutral-700 dark:bg-neutral-800">
-            <div className="text-sm font-semibold select-none">删除该任务及其所有子任务？</div>
-            <div className="mt-1 text-xs text-neutral-400 select-none">{task.title}</div>
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={() => {
-                  onDeleteTaskRecursive(task.id)
-                  setConfirmDelete(false)
-                }}
-                className="flex-1 rounded-lg bg-red-500 py-2 text-xs font-medium text-white transition-opacity select-none hover:opacity-90"
-              >
-                确认删除
-              </button>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="flex-1 rounded-lg border border-neutral-200 py-2 text-xs text-neutral-500 transition-colors select-none hover:text-neutral-700 dark:border-neutral-600 dark:hover:text-neutral-200"
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
+        <TaskDeleteConfirmModal
+          taskTitle={task.title}
+          onConfirm={() => {
+            onDeleteTaskTree(task.id)
+            setConfirmDelete(false)
+          }}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </div>
   )

@@ -34,7 +34,7 @@ export default function App() {
 
   // ---------- 数据动作与派生（RF-P1 迁 features/，App 保留路由编排与全局状态） ----------
   const {
-    addTask, addTaskWithOptions, updateTask, deleteTask, deleteTaskRecursive,
+    addTask, addTaskWithOptions, updateTask, deleteTaskTree,
     updateTaskTag, updateTaskSection, toggleTaskDone, aggregateSectionDone, addSubtaskInline,
     togglePinnedToday, setMasterTask, setTaskPriority, setTaskReminder, updateTaskDue, addTaskToSection,
     toggleChecklistItem, addChecklistItem, updateChecklistItem, deleteChecklistItem,
@@ -167,7 +167,7 @@ export default function App() {
     onTogglePinned: togglePinnedToday,
     onSetPriority: setTaskPriority,
     onPomodoro: (t: Task) => setPomoTarget(t),
-    onDeleteTaskRecursive: deleteTaskRecursive,
+    onDeleteTaskTree: deleteTaskTree,
     onOpenSubTag: openH2,
   }
 
@@ -198,7 +198,7 @@ export default function App() {
     onSetPriority: setTaskPriority,
     onSetMasterTask: setMasterTask,
     onPomodoro: (t: Task) => setPomoTarget(t),
-    onDeleteTaskRecursive: deleteTaskRecursive,
+    onDeleteTaskTree: deleteTaskTree,
     onUpdateTask: updateTask,
   }
 
@@ -262,7 +262,7 @@ export default function App() {
         updateTask={updateTask}
         addTask={addTask}
         toggleTaskDone={toggleTaskDone}
-        deleteTask={deleteTask}
+        deleteTaskTree={deleteTaskTree}
         addSubtaskInline={addSubtaskInline}
         toggleChecklistItem={toggleChecklistItem}
         addChecklistItem={addChecklistItem}
