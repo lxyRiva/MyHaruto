@@ -534,6 +534,13 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 - **Bug3 关联主任务点击候选无反应**：接线链已证完整（App→bundle→视图→taskMenu），嫌疑=FloatingMenu 二级子菜单 close 竞态（120ms closeTimer 丢 onClick）或闭包旧引用；运行时诊断定案（ELECTRON_ENABLE_LOGGING）
 - Bug4（子任务优先级+专注时间显示）留 RF-Fix4 池，不混入本卡
 
+**v1.15 追加（用户指令）：Fix3c-2 commit 前最终门**：
+1. **Bug3 补修已实证落地**（规划层复核 FloatingMenu L98-120：closest 守卫真实在位——外关时 `!ref.contains && !closest('[data-floating-submenu]')` 才 onClose，与标记配对消费；测试 item 10 需复测闭环）
+2. **交互审计任务**（commit 前必跑，测试+开发协同）：全量排查任务系统弹层互斥——①TaskCard 悬空弹窗（popRef 外关+Escape+activePopupId 全局互斥）× FloatingMenu（ref 外关+Bug3 子菜单放行）双向：弹窗开→右键开菜单，菜单是否抢关弹窗/菜单关后弹窗是否滞留 ②右栏（MainArea 常驻，无外关）× FloatingMenu：右栏开→右键卡片→菜单项执行后右栏状态是否一致 ③枚举全部弹层（悬空弹窗/FloatingMenu/DatePickerModal/TaskDeleteConfirmModal/SubTagModal/SettingsModal）两两交叉，确认无"一个关了另一个滞留"变体 ④双链矩阵最终逐格复跑
+3. **Bug5（看板详情弹窗关闭后菜单滞留）**：属本卡范围，审计中定位根因修复（初判：菜单与弹窗各自独立外关，弹窗因外点关闭时 mousedown 同时落在菜单容器外→菜单本应同关；滞留=菜单外关判定被什么放行——修复后枚举回归）
+4. 交互审计通过+Bug5 修复 → 才允许 commit Fix3c-2
+5. **裁定备案**：子任务独立编辑（池 B1）+ 检查事项描述编辑（池 B4）确认为 Fix4 旧账，不阻塞本卡 commit
+
 **行为变化声明（方向已拍板，手测显式验证）**：看板新建补三字段｜右栏删除改递归+确认｜Popover 功能等价化
 **允许触碰**：features/tasks/{utils,components}/**、hooks/useTaskActions.ts、app/layout/MainArea.tsx（接线）、App.tsx（接线）、相关 docs
 **禁止**：其他 features 域、electron/*、数据结构、vite.config.ts
@@ -619,3 +626,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.12 | P3b 验收记录（三报告通过，App 316 行，commit 66480d2，STRUCTURE 重写入 commit）；审查裁定备案：L2 UI 态切页重置=合理行为变化；P6b 追加登记 3 项（死解构/超 50 行函数/类型偏松） |
 | v1.13 | **DEV_RULES §10 视图一致性铁律**（五条款）；新增 **RF-Fix3c 细目卡**（任务系统六组分叉收口：taskTree/taskDelete/taskMeta/taskSort 单点化+TaskCardBase+Popover 等价+看板新建对齐，两段 commit，**待用户确认范围放行**，P3c 暂缓让位）；Fix4 池 R1 转 Fix3c |
 | v1.14 | Fix3c-1 验收提交 8ca48e7（审查 0P0/0P1/5P2，utils 九符号唯一+collapsedOf≡isRootAggregated 根集合论证）；**Fix3c-2 重派**：漏交付三件（TaskCardBase/TaskDetailContent/看板三要素）+ 手测三 Bug 入验收清单（Bug1/2 看板聚合分裂=Fix1 级联历史数据残留嫌疑/Bug3 关联点击无反应=close 竞态嫌疑）；Bug4 留 Fix4 |
+| v1.15 | Fix3c-2 测试 12/13 过+Bug3 物证驳回（惰性标记无消费）→ 开发补真实修复（closest 守卫在位，规划层复核通过）；**commit 前最终门**：交互审计任务（六类弹层两两交叉+双链矩阵终跑）+ Bug5 弹窗关后菜单滞留修复入卡；子任务独立编辑/检查事项描述编辑确证留 Fix4（池 B1/B4）不阻塞 |
