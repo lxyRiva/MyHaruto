@@ -528,6 +528,12 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 9. **删除语义统一（消费段）**：右栏删除按钮改 deleteTaskTree+确认；右键菜单接同一 modal
 **验收（用户定稿）**：双链同操作矩阵——勾选/取消/聚合/取消聚合/删除/新建/折叠 × 横板+看板逐项对照；共享函数 grep 唯一性复验；tsc/build/dev 手测
 
+**Fix3c-1 手测追加三 Bug（v1.14 入验收清单，必须修）**：
+- **Bug1 看板勾子任务独自聚合**（横板正常）：规划层取证=Fix1 规则1 历史级联遗留——子任务残留 aggregated=true，看板折叠散件分支吃旧数据，横板只看根 aggregated 故两副面孔。修法方向：散件判定收窄为"本会话显式聚合"或渲染层无视子任务残留 aggregated；**不改历史数据**
+- **Bug2 看板折叠区取消子勾不整树退回**：与 Bug1 同源（散件语义 vs 树语义），收敛后复验
+- **Bug3 关联主任务点击候选无反应**：接线链已证完整（App→bundle→视图→taskMenu），嫌疑=FloatingMenu 二级子菜单 close 竞态（120ms closeTimer 丢 onClick）或闭包旧引用；运行时诊断定案（ELECTRON_ENABLE_LOGGING）
+- Bug4（子任务优先级+专注时间显示）留 RF-Fix4 池，不混入本卡
+
 **行为变化声明（方向已拍板，手测显式验证）**：看板新建补三字段｜右栏删除改递归+确认｜Popover 功能等价化
 **允许触碰**：features/tasks/{utils,components}/**、hooks/useTaskActions.ts、app/layout/MainArea.tsx（接线）、App.tsx（接线）、相关 docs
 **禁止**：其他 features 域、electron/*、数据结构、vite.config.ts
@@ -612,3 +618,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.11 | Fix3a 手测项勘误：「归档折叠」无对应功能区（PRD §3.6 vs 实现缺失）→ Fix4 池新增 N3；Fix4 池现 10 项 |
 | v1.12 | P3b 验收记录（三报告通过，App 316 行，commit 66480d2，STRUCTURE 重写入 commit）；审查裁定备案：L2 UI 态切页重置=合理行为变化；P6b 追加登记 3 项（死解构/超 50 行函数/类型偏松） |
 | v1.13 | **DEV_RULES §10 视图一致性铁律**（五条款）；新增 **RF-Fix3c 细目卡**（任务系统六组分叉收口：taskTree/taskDelete/taskMeta/taskSort 单点化+TaskCardBase+Popover 等价+看板新建对齐，两段 commit，**待用户确认范围放行**，P3c 暂缓让位）；Fix4 池 R1 转 Fix3c |
+| v1.14 | Fix3c-1 验收提交 8ca48e7（审查 0P0/0P1/5P2，utils 九符号唯一+collapsedOf≡isRootAggregated 根集合论证）；**Fix3c-2 重派**：漏交付三件（TaskCardBase/TaskDetailContent/看板三要素）+ 手测三 Bug 入验收清单（Bug1/2 看板聚合分裂=Fix1 级联历史数据残留嫌疑/Bug3 关联点击无反应=close 竞态嫌疑）；Bug4 留 Fix4 |
