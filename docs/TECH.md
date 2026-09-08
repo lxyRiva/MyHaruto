@@ -60,6 +60,12 @@ settings{ theme:'light'|'dark' }
 ### 3.3 数据自愈（electron/main.js loadDb）
 加载时自动：补齐缺失字段（版本兼容）、断开 parentTaskId 环/悬空引用（历史脏数据曾致白屏）。**新增字段必须同时在 defaultDb 和 loadDb 兜底**。
 
+### 3.4 AI 数据域（设计基线 2026-09-08；P5 建模板，M5 起用）
+- **统一消息模型**：`data/ai/chat-messages.json`——Haruto 留言与对话统一时间线（留言=聊天记录的一部分），每条 `{id, role, content, imagePath?, sourceType:'chat'|'task'|'importantDay'|'period'|'town', createdAt}`；**记忆库只从此文件提取**。
+- **模板集（仓库内 data/，P5 建）**：`ai/chat-messages.json`（空数组）、`ai/persona.md`（默认人设）、`ai/memories/{fragments,episodes,entity-profiles}.json`（空结构）、`ai/agent/activity-log.json`。
+- **数据隔离铁律**：GitHub 仓库内 `data/` 只放空模板+默认人设；用户实体数据在 `%APPDATA%/MyHaruto/data/`，永不上传，.gitignore 兜底校验。
+- **角色渲染解耦**：CharacterStage 组件 + character-state.json 状态文件——2D/3D 只换资产与渲染层，任务系统/记忆库/对话逻辑不动。
+
 ## 4. 关键机制
 
 ### 4.1 专注时长归并（统计铁律）

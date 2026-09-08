@@ -273,7 +273,8 @@ important-days.json │ period-records.json │ sleep-records.json   # sleepReco
 logs/operations.log          # 人读操作行
 logs/changes/YYYY-MM-DD.json # 删除留痕 {ts, domain, action:'delete', ids}
 backups/                     # pre-migration 快照 + 滚动备份
-ai/ assets/                  # M5/P6 起创建，本卡不建空目录
+ai/                          # AI 数据域：P5 只建仓库内空模板（见步骤 6），运行时实体 M5 起
+assets/                      # 用户上传资源（P6a 起使用），本卡不建
 ```
 **步骤**：
 1. store.js 多文件 loadAll：manifest 判版本→读域→按域自愈（原 loadDb 逻辑拆到各域）→拼装 Db。
@@ -284,8 +285,17 @@ ai/ assets/                  # M5/P6 起创建，本卡不建空目录
    c. manifest 与 db.json 均不存在（**全新安装**）→ `defaultDb()` 初始化 → 直接按多文件结构写入 → 写 manifest → operations.log 记一条「首次初始化」。
 4. `scripts/verify-migration.mjs`（纯 node 内置，无新依赖）逐域 deepStrictEqual；package.json 加 `verify:data`。
 5. TECH.md/DEV_RULES 数据章节更新为 manifest 版本迁移。
+6. **AI 数据域模板（仓库内 data/，本卡新建；运行时实体 M5 起在 %APPDATA% 同构落地）**：
+   `data/ai/chat-messages.json`（空数组 `[]`）、`data/ai/persona.md`（默认人设模板）、
+   `data/ai/memories/{fragments,episodes,entity-profiles}.json`（空结构）、
+   `data/ai/agent/activity-log.json`（空结构）。消息统一模型与隔离铁律见 TECH §3.4：
+   每条消息 {id,role,content,imagePath?,sourceType:'chat'|'task'|'importantDay'|'period'|'town',createdAt}，
+   时间线统一、记忆库唯一提取源；**AI 代码层（调用/记忆提取/CharacterStage 渲染）M5 再建，
+   本卡不建空目录不写代码，仓库 data/ 只放空模板+默认人设**。
 
-**测试验收**：`grep "window.myharuto" src/` 仍仅 repository.ts；渲染端 diff 零逻辑变更；scripts 存在。
+**测试验收**：`grep "window.myharuto" src/` 仍仅 repository.ts；渲染端 diff 零逻辑变更；scripts 存在；
+AI 模板五件在仓库 data/ai/ 下且 git 已跟踪（`git ls-files data/`）；.gitignore 兜底校验——
+`git check-ignore "%APPDATA%/MyHaruto/data"` 不适用（目录在仓库外天然不入库），改为确认仓库 data/ 内只有空模板/默认人设、无任何用户实体数据（`git log --all -- data/` 无用户数据提交史）。
 **用户手测**：迁移无感→数据文件夹肉眼可读→全功能回归→重启两次稳定→**删一个任务 logs/changes/ 出记录**→`npm run verify:data` PASS→backups 有快照。
 **回滚预案（维护 Agent）**：关应用→删 manifest.json 与各域文件→复制 `backups/db-pre-migration-*.json` 为 `data/db.json`→启动验证。
 
@@ -641,3 +651,4 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.19 | **AI 模块设计基线入册（用户 2026-09-08 插播，自主分配）**：①PRD §3.7 重写——AI 设计原则（美术资产≠AI 能力，2D/3D 不影响任务/记忆/对话）+CharacterStage/character-state.json 渲染解耦+消息统一模型（chat-messages.json，sourceType chat/task/importantDay/period/town，时间线统一，记忆库唯一提取源）②TECH 新增 §3.4 AI 数据域（模型/模板集/隔离铁律/渲染解耦）③RF-P5 卡更新：ai/ 行改"仓库模板 P5 建、实体 M5 起"+步骤 6 AI 模板五件+验收加 git ls-files data/ 与无用户数据提交史校验 ④README 补数据与隐私节。数据隔离铁律=仓库 data/ 只放空模板+默认人设，用户数据 %APPDATA% 永不上传 |
