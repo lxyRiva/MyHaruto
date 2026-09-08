@@ -45,6 +45,7 @@ export interface CardBundle {
   onDeleteChecklistItem: (taskId: string, itemId: string) => void
   onSetTaskReminder: (id: string, remindAt: string | null, remindDaysBefore: number | null) => void
   onUpdateTaskDue: (id: string, dueDate: string | null) => void
+  onUpdateTask: (id: string, patch: Partial<Task>) => void // Fix3c-2：弹窗描述编辑（TaskDetailContent 消费）
   onAddSubtask: (parentId: string, title: string) => void
   onUpdateTag: (id: string, tagId: string | null) => void
   onUpdateTaskSection: (id: string, sectionId: string | null) => void

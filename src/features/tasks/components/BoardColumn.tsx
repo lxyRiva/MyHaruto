@@ -4,9 +4,11 @@ import type { Section, SubTag, Tag, Task } from '../../../shared/types'
 import { IconChevron } from '../../../shared/components/icons'
 import FloatingMenu from '../../../shared/components/FloatingMenu'
 import TaskCard from './TaskCard'
+import { NewTaskFields } from './NewTaskBar'
 import { taskSort } from '../utils/taskSort'
 import { collapsedOf } from '../utils/taskTree'
 import type { CardBundle } from './taskMenu'
+import type { Priority } from '../types'
 import type { MenuEntry } from '../../../shared/components/FloatingMenu'
 
 /* ---------- Section 列：列头（重命名/＋新建任务/⋯六项菜单）+ 任务堆叠 + 已完成折叠区 + 删除确认 ---------- */
@@ -31,7 +33,7 @@ export default function SectionColumn({
   onRequestRename: (id: string) => void
   onRenameCommit: (id: string, name: string) => void
   onRenameCancel: () => void
-  onAddTaskToSection: (sectionId: string, title: string) => void
+  onAddTaskToSection: (sectionId: string, title: string, opts?: { dueDate?: string | null; priority?: Priority; tagId?: string | null }) => void
   onInsertSection: (sectionId: string, side: 'left' | 'right') => void
   onMoveSection: (sectionId: string, newSubTagId: string) => void
   onDeleteSection: (sectionId: string) => void
@@ -39,6 +41,10 @@ export default function SectionColumn({
 }) {
   const [doneOpen, setDoneOpen] = useState(false)
   const [addingTask, setAddingTask] = useState(false)
+  // Fix3c-2 第8项：看板新建对齐 NewTaskBar——列内紧凑变体的三要素受控态
+  const [nfDue, setNfDue] = useState<string | null>(null)
+  const [nfPriority, setNfPriority] = useState<Priority>('none')
+  const [nfSubTagId, setNfSubTagId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -113,19 +119,45 @@ export default function SectionColumn({
       </div>
 
       {addingTask && (
-        <input
-          autoFocus
-          placeholder="添加任务…"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-              onAddTaskToSection(section.id, e.currentTarget.value.trim())
-              e.currentTarget.value = ''
-              setAddingTask(false)
-            }
-            if (e.key === 'Escape') setAddingTask(false)
-          }}
-          className="mb-2 w-full rounded-lg border border-dashed border-haruto-sea/50 bg-transparent px-3 py-1.5 text-[13px] outline-none focus:border-haruto-sea"
-        />
+        <div className="mb-2 flex items-center gap-1">
+          <input
+            autoFocus
+            placeholder="添加任务…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                const h1TagId = nfSubTagId ? card.subTags.find((s) => s.id === nfSubTagId)?.h1TagId || null : null
+                onAddTaskToSection(section.id, e.currentTarget.value.trim(), {
+                  dueDate: nfDue,
+                  priority: nfPriority,
+                  tagId: h1TagId,
+                })
+                e.currentTarget.value = ''
+                setNfDue(null)
+                setNfPriority('none')
+                setNfSubTagId(null)
+                setAddingTask(false)
+              }
+              if (e.key === 'Escape') {
+                setNfDue(null)
+                setNfPriority('none')
+                setNfSubTagId(null)
+                setAddingTask(false)
+              }
+            }}
+            className="min-w-0 flex-1 rounded-lg border border-dashed border-haruto-sea/50 bg-transparent px-2 py-1 text-[13px] outline-none focus:border-haruto-sea"
+          />
+          {/* 紧凑字段区（NewTaskBar 抽取组件）：日期/优先级/标签三要素与横板对齐 */}
+          <NewTaskFields
+            compact
+            subTags={card.subTags}
+            dueDate={nfDue}
+            onDueDate={setNfDue}
+            priority={nfPriority}
+            onPriority={setNfPriority}
+            subTagId={nfSubTagId}
+            onSubTagId={setNfSubTagId}
+          />
+        </div>
       )}
 
       <div className="min-h-[48px] space-y-2">

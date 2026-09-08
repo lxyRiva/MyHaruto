@@ -161,6 +161,7 @@ export default function App() {
     onDeleteChecklistItem: deleteChecklistItem,
     onSetTaskReminder: setTaskReminder,
     onUpdateTaskDue: updateTaskDue,
+    onUpdateTask: updateTask,
     onAddSubtask: addSubtaskInline,
     onUpdateTag: updateTaskTag,
     onUpdateTaskSection: updateTaskSection,

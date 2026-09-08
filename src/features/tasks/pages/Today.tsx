@@ -7,7 +7,7 @@ import ListTaskCard from '../components/ListTaskCard'
 import NewTaskBar from '../components/NewTaskBar'
 import { taskSort } from '../utils/taskSort'
 import { collapsedOf } from '../utils/taskTree'
-import { DoneFoldSection } from '../components/ListTaskCard'
+import { DoneFoldSection } from '../components/DoneFoldSection'
 import type { Priority } from '../types'
 
 export function todayStr() {

@@ -60,6 +60,7 @@ export interface BoardCallbacks {
   onDeleteChecklistItem: (taskId: string, itemId: string) => void
   onSetTaskReminder: (id: string, remindAt: string | null, remindDaysBefore: number | null) => void
   onUpdateTaskDue: (id: string, dueDate: string | null) => void
+  onUpdateTask: (id: string, patch: Partial<Task>) => void
   onAddSubtask: (parentId: string, title: string) => void
   onUpdateTag: (id: string, tagId: string | null) => void
   onUpdateTaskSection: (id: string, sectionId: string | null) => void
@@ -97,6 +98,7 @@ export default function BoardView({
   onDeleteChecklistItem,
   onSetTaskReminder,
   onUpdateTaskDue,
+  onUpdateTask,
   onAddSubtask,
   onUpdateTag,
   onUpdateTaskSection,
@@ -146,6 +148,7 @@ export default function BoardView({
     onDeleteChecklistItem,
     onSetTaskReminder,
     onUpdateTaskDue,
+    onUpdateTask,
     onAddSubtask,
     onUpdateTag,
     onUpdateTaskSection,

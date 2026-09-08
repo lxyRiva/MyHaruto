@@ -44,13 +44,11 @@ export function isTreeComplete(tasks: Task[], rootId: string): boolean {
   return treeOf(tasks, rootId).every((t) => t.done)
 }
 
-// 折叠区成员判定（唯一实现，Fix1 规则 + 规则6 散件）：
-//   整树判定 = 根任务 aggregated（沿 parentTaskId 上溯，历史散落在子任务上的 aggregated 无视）；
-//   例外 = 规则6 散件（自身被「聚合」显式标记的 done 子任务，其主任务未完成/未聚合时单独入折叠区）
+// 折叠区成员判定（唯一实现，Fix3 树语义 + v1.14 Bug1/2 收敛裁定）：
+//   唯一依据 = 根任务 aggregated（沿 parentTaskId 上溯取根，防环）。
+//   原「规则6 散件」分支（子任务自身 aggregated=true 独立折叠）已按 v1.14 裁定删除：
+//   Fix1 时代级联写入的子任务 aggregated 残留在历史数据中（不清洗），散件分支会吃旧数据
+//   造成「看板勾子任务独自聚合/取消子勾不整树退回」两副面孔；现渲染层一律无视子任务自身 aggregated。
 export function collapsedOf(tasks: Task[]): (t: Task) => boolean {
-  return (t: Task) => {
-    const root = rootOf(tasks, t.id)
-    if (root?.aggregated) return true
-    return t.done && t.aggregated === true
-  }
+  return (t: Task) => rootOf(tasks, t.id)?.aggregated === true
 }

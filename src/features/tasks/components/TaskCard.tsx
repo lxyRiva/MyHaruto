@@ -1,17 +1,17 @@
-// 看板任务卡片（RF-P2a 自 BoardView.tsx 原样迁入）：勾选/悬空弹窗/右键九项菜单/子任务嵌套折叠
-// RF-Fix3c：meta 行改消费 taskMeta.buildTaskMeta（唯一组装）；删除确认改接共享 modal
+// 看板任务卡片（RF-P2a 自 BoardView.tsx 迁入；RF-Fix3c 第6项薄壳化）：
+// 视图差异留本壳——左键 = 悬空详情弹窗（activePopupId 全局互斥）、右键菜单/日期/子任务输入/删除确认接线；
+// 卡片本体（勾选框+标题+meta 行+子任务折叠递归）全部委托 TaskCardBase（吃 taskMeta/taskTree）；
+// 弹窗内容与右栏同渲染（TaskDetailContent，第7项功能等价化）
 import { useEffect, useRef, useState } from 'react'
 import type { Task } from '../../../shared/types'
-import type { Priority } from '../types'
-import { IconBell, IconChat, IconChevron, IconClock } from '../../../shared/components/icons'
 import FloatingMenu from '../../../shared/components/FloatingMenu'
-import { DatePickerModal, RemindPicker, localToday } from './DateTimePickers'
+import { DatePickerModal, localToday } from './DateTimePickers'
 import { buildTaskContextMenu, type CardBundle } from './taskMenu'
-import { ChecklistAddRow, ChecklistRow } from './ChecklistRow'
-import { buildTaskMeta, checklistDefaultMode } from '../utils/taskMeta'
+import TaskCardBase from './TaskCardBase'
 import TaskDeleteConfirmModal from './TaskDeleteConfirmModal'
+import TaskDetailContent from './TaskDetailContent'
 
-/* ---------- 任务卡片：勾选框 + 优先级点 + 折叠三角 + meta + 悬空弹窗 + 右键菜单 ---------- */
+/* ---------- 任务卡片薄壳：TaskCardBase 本体 + 悬空弹窗 + 右键菜单 + 行内输入 ---------- */
 export default function TaskCard({
   task,
   columnTasks,
@@ -35,6 +35,7 @@ export default function TaskCard({
   onDeleteChecklistItem,
   onSetTaskReminder,
   onUpdateTaskDue,
+  onUpdateTask,
   onAddSubtask,
   onUpdateTag,
   onUpdateTaskSection,
@@ -48,33 +49,29 @@ export default function TaskCard({
   const cardRef = useRef<HTMLDivElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
   const [pop, setPop] = useState<{ x: number; y: number } | null>(null) // 本卡弹窗坐标（每次打开按自身 rect 现场算）
-  const [tab, setTab] = useState<'text' | 'checklist'>(checklistDefaultMode(task)) // 检查事项默认视图（taskMeta 唯一实现）
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [subInput, setSubInput] = useState(false)
-  const [expanded, setExpanded] = useState(false) // 子任务折叠：默认只显示第一个
-  const [addingItem, setAddingItem] = useState(false) // ＋添加 事项输入框
-  const [remindFor, setRemindFor] = useState<string | null>(null) // 事项级提醒 picker
-  const [dateOpen, setDateOpen] = useState(false) // 日期选择 modal
   const [pickingDate, setPickingDate] = useState(false) // 行内日期选择（菜单"选择日期…"）
   const [confirmDelete, setConfirmDelete] = useState(false) // 修正2：删除任务确认
+  const [dateOpen, setDateOpen] = useState(false) // 弹窗日期行 → 日期选择 modal
   const popOpen = activePopupId === task.id && !!pop
-  // meta 行唯一组装点（taskMeta.buildTaskMeta，Fix3c 单点化）
-  const meta = buildTaskMeta(task, { minutesOf, tagMap: new Map(tags.map((t) => [t.id, t])) })
-  const { dateText, minutes } = meta
-  const hasComments = task.taskComments.length > 0
   const today = localToday()
 
   /* 子任务：本列内 parentTaskId 指向本卡的任务（seen 防环）；折叠时只显示第一个 */
   // 子任务跟随父卡所在分区（RF-Fix1 修正）：父卡在折叠区 → 子孙跟随显示（可展开查看）；
-  // 父卡在堆叠区 → 排除已折叠散件（规则6：散件独立显示在折叠区，不在堆叠区父卡下重复）
+  // 父卡在堆叠区 → 排除已折叠任务（其已在折叠区显示，不在堆叠区父卡下重复）
   const children = columnTasks.filter(
     (t) => t.parentTaskId === task.id && !seen.has(t.id) && (parentFolded || !foldedIds.has(t.id))
   )
   const childSeen = (id: string) => new Set([...seen, id])
-  const visibleChildren = expanded ? children : children.slice(0, 1)
 
   /* Bug1 修复：弹窗坐标基于本卡 rect 现场计算；显示由全局 activePopupId 互斥（开新关旧） */
+  /* RF-Fix3c Bug5：弹窗与右键菜单显式互斥（双向）——
+     开弹窗先关菜单：否则菜单滞留（两套外关互不感知，见下）；
+     开菜单先关弹窗：右键落在弹窗内时 mousedown 被 contains 放行、弹窗不关，
+     若不同步关闭则「弹窗+菜单」并存，后续任意关闭路径都可能让另一方滞留 */
   const openPopup = () => {
+    setMenu(null)
     const r = cardRef.current?.getBoundingClientRect()
     if (!r) return
     const W = 380
@@ -102,7 +99,7 @@ export default function TaskCard({
     }
   }, [popOpen, onClosePopup])
 
-  /* 右键七项菜单（构建器已提取导出，列表视图卡片复用） */
+  /* 右键九项菜单（构建器已提取导出，列表视图卡片复用） */
   const menuEntries = buildTaskContextMenu(task, {
     allTasks,
     tags,
@@ -126,108 +123,38 @@ export default function TaskCard({
       onClick={openPopup}
       onContextMenu={(e) => {
         e.preventDefault()
+        if (popOpen) onClosePopup() // Bug5：开菜单同步关弹窗（互斥另一半）
         setMenu({ x: e.clientX, y: e.clientY })
       }}
       title={task.title}
       className="cursor-pointer rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2 transition-all
         hover:border-haruto-sea/50 hover:shadow-sm select-none dark:border-neutral-700/70 dark:bg-neutral-900"
     >
-      <div className="flex items-start gap-2">
-        {/* 勾选框：完成原位灰显（不移动），茶绿实心 + 白勾 */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleDone(task.id)
-          }}
-          title={task.done ? '标记为未完成' : '标记为完成'}
-          className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-[3px] border transition-colors
-            ${
-              task.done
-                ? 'border-[#5b8c5a] bg-[#5b8c5a] text-white'
-                : 'border-neutral-300 text-transparent hover:border-haruto-sea dark:border-neutral-600'
-            }`}
-        >
-          <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="2.5 6 5 8.5 9.5 3.5" />
-          </svg>
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-1.5">
-            {meta.priorityFlag && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.priorityFlag }} title={`优先级：${(task.priority ?? 'none') as Priority}`} />}
-            <div
-              className={`min-w-0 flex-1 text-[13px] leading-snug break-all ${
-                task.done ? 'text-neutral-400 line-through' : 'text-neutral-700 dark:text-neutral-200'
-              }`}
-            >
-              {task.title}
-            </div>
-            {/* 子任务折叠三角（无子任务不显示） */}
-            {children.length > 0 && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setExpanded((v) => !v)
-                }}
-                title={expanded ? '收起子任务' : '展开子任务'}
-                className="mt-0.5 shrink-0 text-neutral-400 hover:text-haruto-sea"
-              >
-                <IconChevron open={expanded} />
-              </button>
-            )}
-          </div>
-          <div className="mt-1 flex items-center gap-2.5 text-[11px]">
-            {dateText &&
-              (dateText === '今天' ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setDateOpen(true)
-                  }}
-                  className="font-medium text-purple-500 hover:underline"
-                  title="点击修改日期与提醒"
-                >
-                  今天
-                </button>
-              ) : (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setDateOpen(true)
-                  }}
-                  className="tabular-nums text-neutral-600 hover:text-haruto-sea hover:underline dark:text-neutral-300"
-                  title="点击修改日期与提醒"
-                >
-                  {dateText}
-                </button>
-              ))}
-            {task.remindAt && (
-              <span className="flex items-center text-haruto-sea" title="已设提醒">
-                <span className="[&>svg]:h-3 [&>svg]:w-3">
-                  <IconBell />
-                </span>
-              </span>
-            )}
-            {task.isPinnedToday && <span className="text-[10px] text-haruto-sea">置顶</span>}
-            {minutes > 0 && (
-              <span className="flex items-center gap-0.5 text-neutral-400 tabular-nums" title={`已专注 ${minutes} 分钟`}>
-                <span className="[&>svg]:h-3 [&>svg]:w-3">
-                  <IconClock />
-                </span>
-                {minutes}分
-              </span>
-            )}
-            <span
-              className={`ml-auto flex items-center gap-0.5 ${hasComments ? 'text-[#6a994e]' : 'text-neutral-300 dark:text-neutral-600'}`}
-              title={hasComments ? `${hasComments} 条留言` : '暂无留言'}
-            >
-              <span className="[&>svg]:h-3 [&>svg]:w-3">
-                <IconChat />
-              </span>
-              {hasComments && <span className="tabular-nums">{task.taskComments.length}</span>}
-            </span>
-          </div>
-        </div>
-      </div>
+      <TaskCardBase
+        task={task}
+        metaDeps={{ minutesOf, tagMap: new Map(tags.map((t) => [t.id, t])) }}
+        childrenTasks={children}
+        onToggleDone={onToggleDone}
+        onEditDate={() => setDateOpen(true)}
+        variant="board"
+        renderChild={(c) => (
+          <TaskCard
+            key={c.id}
+            task={c}
+            columnTasks={columnTasks}
+            foldedIds={foldedIds}
+            parentFolded={parentFolded}
+            depth={depth + 1}
+            seen={childSeen(c.id)}
+            {...{
+              minutesOf, allTasks, aiName, tags, subTags, sections, activePopupId, onRequestPopup, onClosePopup,
+              onToggleDone, onToggleChecklist, onAddChecklistItem, onUpdateChecklistItem, onDeleteChecklistItem,
+              onSetTaskReminder, onUpdateTaskDue, onUpdateTask, onAddSubtask, onUpdateTag, onUpdateTaskSection,
+              onTogglePinned, onSetPriority, onSetMasterTask, onPomodoro, onDeleteTaskTree, onOpenSubTag,
+            }}
+          />
+        )}
+      />
 
       {/* 行内添加子任务（右键菜单触发，回车创建、Esc 取消） */}
       {subInput && (
@@ -240,7 +167,6 @@ export default function TaskCard({
               onAddSubtask(task.id, e.currentTarget.value.trim())
               e.currentTarget.value = ''
               setSubInput(false)
-              setExpanded(true) // 加了子任务顺手展开
             }
             if (e.key === 'Escape') setSubInput(false)
           }}
@@ -267,174 +193,39 @@ export default function TaskCard({
         />
       )}
 
-      {/* 子任务嵌套：折叠时只显示第一个 + 「还有 N 项」；展开显示全部 */}
-      {children.length > 0 && (
-        <div className="mt-2 space-y-2 border-l-2 border-neutral-100 pl-2 dark:border-neutral-800">
-          {visibleChildren.map((c) => (
-            <TaskCard
-              key={c.id}
-              task={c}
-              columnTasks={columnTasks}
-              foldedIds={foldedIds}
-              parentFolded={parentFolded}
-              depth={depth + 1}
-              seen={childSeen(c.id)}
-              {...{
-                minutesOf, allTasks, aiName, tags, subTags, sections, activePopupId, onRequestPopup, onClosePopup,
-                onToggleDone, onToggleChecklist, onAddChecklistItem, onUpdateChecklistItem, onDeleteChecklistItem,
-                onSetTaskReminder, onUpdateTaskDue, onAddSubtask, onUpdateTag, onUpdateTaskSection,
-                onTogglePinned, onSetPriority, onSetMasterTask, onPomodoro, onDeleteTaskTree, onOpenSubTag,
-              }}
-            />
-          ))}
-          {!expanded && children.length > 1 && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                setExpanded(true)
-              }}
-              className="pl-1 text-[10px] text-neutral-400 transition-colors hover:text-haruto-sea"
-            >
-              还有 {children.length - 1} 项
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* 左键悬空详情弹窗（全局互斥；w-360 起步，min-h-200） */}
+      {/* 左键悬空详情弹窗（Fix3c 第7项：内容与右栏同渲染 TaskDetailContent；宽度/滚动约束在本壳） */}
       {popOpen && pop && (
         <div
           ref={popRef}
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-40 min-h-[200px] w-[360px] max-w-[480px] rounded-xl border border-neutral-200 bg-white p-4 shadow-xl
+          className="fixed z-40 flex max-h-[70vh] w-[360px] max-w-[480px] flex-col rounded-xl border border-neutral-200 bg-white p-4 shadow-xl
             animate-[fadeSlideIn_.12s_ease] dark:border-neutral-700 dark:bg-neutral-800"
           style={{ left: pop.x, top: pop.y }}
         >
-          <div className="flex items-start gap-2">
-            <div className="min-w-0 flex-1 text-sm font-bold leading-snug break-all">{task.title}</div>
-            <div className="flex shrink-0 rounded-md bg-black/5 p-0.5 text-[10px] dark:bg-white/10">
-              {(
-                [
-                  ['text', '文本'],
-                  ['checklist', '检查事项'],
-                ] as const
-              ).map(([v, label]) => (
-                <button
-                  key={v}
-                  onClick={() => setTab(v)}
-                  className={`rounded px-2 py-0.5 transition-colors ${
-                    tab === v ? 'bg-white text-haruto-sea shadow-sm dark:bg-neutral-700' : 'text-neutral-400'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 日期行：点击打开日期选择 modal */}
-          <button
-            onClick={() => setDateOpen(true)}
-            className="mt-2 flex items-center gap-1.5 rounded-lg border border-dashed border-neutral-200 px-2 py-1 text-xs
-              text-neutral-500 transition-colors hover:border-haruto-sea hover:text-haruto-sea dark:border-neutral-600"
-          >
-            {task.dueDate ? (
-              task.dueDate === today ? (
-                <span className="font-medium text-purple-500">今天</span>
-              ) : (
-                <span className="tabular-nums text-neutral-600 dark:text-neutral-300">{task.dueDate}</span>
-              )
-            ) : (
-              <span>添加日期</span>
-            )}
-            {task.remindAt && (
-              <span className="text-haruto-sea" title="已设提醒">
-                <span className="[&>svg]:h-3 [&>svg]:w-3">
-                  <IconBell />
-                </span>
-              </span>
-            )}
-          </button>
-
-          <div className="mt-3">
-            {tab === 'text' ? (
-              task.description ? (
-                <p className="text-xs leading-relaxed break-all whitespace-pre-wrap text-neutral-600 dark:text-neutral-300">
-                  {task.description}
-                </p>
-              ) : (
-                <p className="text-xs text-neutral-300 dark:text-neutral-600">暂无描述</p>
-              )
-            ) : (
-              <>
-                {/* 检查事项模式：描述 → 分隔线 → 标题+添加 → 列表 */}
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {task.description || <span className="text-neutral-300 dark:text-neutral-600">暂无描述</span>}
-                </p>
-                <div className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-700/60">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">检查事项</span>
-                    <button
-                      onClick={() => setAddingItem(true)}
-                      className="text-[10px] text-haruto-sea transition-colors hover:opacity-75"
-                    >
-                      + 添加
-                    </button>
-                  </div>
-                  <div className="mt-1.5 space-y-1">
-                    {task.checklistItems.map((c) => (
-                      <ChecklistRow
-                        key={c.id}
-                        item={c}
-                        onToggle={() => onToggleChecklist(task.id, c.id)}
-                        onUpdate={(patch) => onUpdateChecklistItem(task.id, c.id, patch)}
-                        onDelete={() => onDeleteChecklistItem(task.id, c.id)}
-                        onRemind={() => setRemindFor(c.id)}
-                      />
-                    ))}
-                    {addingItem && (
-                      <ChecklistAddRow
-                        onAdd={(t) => onAddChecklistItem(task.id, t)}
-                        onCancel={() => setAddingItem(false)}
-                      />
-                    )}
-                    {task.checklistItems.length === 0 && !addingItem && (
-                      <p className="py-1 text-xs text-neutral-300 dark:text-neutral-600">暂无检查事项</p>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* AI 留言入口（M6 上线后显示留言；当前只读占位） */}
-          <div className="mt-3 border-t border-neutral-100 pt-2 dark:border-neutral-700/60">
-            <div className="flex items-center gap-1.5 text-[#6a994e]">
-              <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">
-                <IconChat />
-              </span>
-              <span className="text-xs font-medium">{aiName} 的留言</span>
-            </div>
-            <div className="mt-1 text-xs italic text-haruto-sea/60">暂无留言</div>
-          </div>
+          <TaskDetailContent
+            task={task}
+            aiName={aiName}
+            tags={tags}
+            subTags={subTags}
+            sections={sections}
+            childTasks={children}
+            onOpenSubTag={onOpenSubTag}
+            onUpdateTask={onUpdateTask}
+            onToggleDone={onToggleDone}
+            onAddSubtask={onAddSubtask}
+            onToggleChecklist={onToggleChecklist}
+            onAddChecklistItem={onAddChecklistItem}
+            onUpdateChecklistItem={onUpdateChecklistItem}
+            onDeleteChecklistItem={onDeleteChecklistItem}
+            onEditDate={() => setDateOpen(true)}
+          />
         </div>
       )}
 
-      {/* 右键七项菜单 */}
+      {/* 右键九项菜单 */}
       {menu && <FloatingMenu x={menu.x} y={menu.y} entries={menuEntries} onClose={() => setMenu(null)} />}
 
-      {/* 事项级提醒 picker */}
-      {remindFor && (
-        <RemindPicker
-          onSave={(iso) => {
-            onUpdateChecklistItem(task.id, remindFor, { remindAt: iso })
-            setRemindFor(null)
-          }}
-          onCancel={() => setRemindFor(null)}
-        />
-      )}
-
-      {/* 日期选择 modal */}
+      {/* 日期选择 modal（弹窗日期行入口） */}
       {dateOpen && (
         <DatePickerModal
           initialDueDate={task.dueDate}
@@ -449,7 +240,7 @@ export default function TaskCard({
         />
       )}
 
-      {/* 修正2：删除任务确认（递归删子孙；Fix3c 改接共享 modal） */}
+      {/* 修正2：删除任务确认（删整树；共享 modal） */}
       {confirmDelete && (
         <TaskDeleteConfirmModal
           taskTitle={task.title}
@@ -463,4 +254,3 @@ export default function TaskCard({
     </div>
   )
 }
-

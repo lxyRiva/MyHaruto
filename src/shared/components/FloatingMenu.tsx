@@ -60,6 +60,7 @@ function MenuList({ entries, onClose }: { entries: MenuEntry[]; onClose: () => v
             </button>
             {openSub === i && (
               <div
+                data-floating-submenu
                 className="fixed z-[60] min-w-36 max-h-72 overflow-y-auto rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700
                   bg-white dark:bg-neutral-800 py-1.5 text-sm animate-[fadeSlideIn_.12s_ease]"
                 style={{ left: subPos.x, top: subPos.y }}
@@ -99,13 +100,27 @@ export default function FloatingMenu({
   const ref = useRef<HTMLDivElement>(null)
 
   // 点击菜单外部时关闭（滚轮滚动不关闭）
+  // RF-Fix3c Bug3：二级子菜单是本容器外的 fixed 兄弟节点，mousedown 落在子菜单上时
+  // 必须放行（closest 判定 data-floating-submenu），否则 onClose 先卸载菜单、click
+  // 到达不了候选项——"关联主任务点候选无反应"的根因
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      if (
+        ref.current &&
+        !ref.current.contains(e.target as Node) &&
+        !(e.target as Element).closest?.('[data-floating-submenu]')
+      )
+        onClose()
     }
     window.addEventListener('mousedown', h)
+    // 弹层自审修补：菜单无 Escape 处理，与其他弹层的 Escape 行为对齐
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', k)
     return () => {
       window.removeEventListener('mousedown', h)
+      window.removeEventListener('keydown', k)
     }
   }, [onClose])
 

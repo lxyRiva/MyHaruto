@@ -6,7 +6,7 @@ import ListTaskCard, { type ListCardCallbacks } from './ListTaskCard'
 import NewTaskBar from './NewTaskBar'
 import { taskSort } from '../utils/taskSort'
 import { collapsedOf } from '../utils/taskTree'
-import { DoneFoldSection } from './ListTaskCard'
+import { DoneFoldSection } from './DoneFoldSection'
 import type { Priority } from '../types'
 
 function localToday(): string {

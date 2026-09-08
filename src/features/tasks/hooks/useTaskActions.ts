@@ -129,10 +129,14 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
     })
 
   // 聚合：把该 Section 下所有 done=true 的任务标记进「已完成」折叠区（数据标记，渲染层按此分区）
+  // v1.14 Bug1/2 收敛：只对根任务打标（子任务跟随整树语义，不再独立聚合——
+  // 历史上对子任务打标造成的 aggregated 残留正是看板/横板两副面孔的根源）
   const aggregateSectionDone = (sectionId: string) =>
     setDb((d) => ({
       ...d,
-      tasks: d.tasks.map((t) => (t.sectionId === sectionId && t.done ? { ...t, aggregated: true } : t)),
+      tasks: d.tasks.map((t) =>
+        t.sectionId === sectionId && t.done && !t.parentTaskId ? { ...t, aggregated: true } : t
+      ),
     }))
 
   // 看板内加子任务：sectionId/tagId 继承父任务
@@ -166,7 +170,12 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
   const updateTaskDue = (id: string, dueDate: string | null) => updateTask(id, { dueDate })
 
   // 在指定 Section 下新建任务：tagId 归属到该 Section 所属 H2 的 h1TagId（游离 H2 归 null）
-  const addTaskToSection = (sectionId: string, title: string) =>
+  // RF-Fix3c 第8项：看板新建对齐 NewTaskBar——可选日期/优先级/标签（tagId 沿用 H1 归属语义）
+  const addTaskToSection = (
+    sectionId: string,
+    title: string,
+    opts?: { dueDate?: string | null; priority?: NonNullable<Task['priority']>; tagId?: string | null }
+  ) =>
     setDb((d) => {
       const sec = d.sections.find((s) => s.id === sectionId)
       const h1TagId = d.subTags.find((st) => st.id === sec?.subTagId)?.h1TagId || null
@@ -174,8 +183,8 @@ export function useTaskActions(db: Db, setDb: Dispatch<SetStateAction<Db>>) {
         ...d,
         tasks: [
           {
-            id: uid(), title, description: '', dueDate: null, done: false, createdAt: new Date().toISOString(),
-            tagId: h1TagId, parentTaskId: null, priority: 'none', masterTaskId: null, isPinnedToday: false,
+            id: uid(), title, description: '', dueDate: opts?.dueDate ?? null, done: false, createdAt: new Date().toISOString(),
+            tagId: opts?.tagId ?? h1TagId, parentTaskId: null, priority: opts?.priority ?? 'none', masterTaskId: null, isPinnedToday: false,
             sectionId, checklistItems: [], taskComments: [],
           },
           ...d.tasks,

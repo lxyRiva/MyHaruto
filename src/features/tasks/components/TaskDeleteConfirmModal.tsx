@@ -1,10 +1,21 @@
 // 任务删除确认 modal（RF-Fix3c 抽共享：横板 ListTaskCard 与看板 TaskCard 的同款确认框唯一化）
 // 纯展示组件：文案 + 确认/取消回调；删除动作由消费层接线（§10 视图只做布局适配）
+// v1.16：容器级 Escape 关闭（对齐 FloatingMenu 写法）
+import { useEffect } from 'react'
+
 export default function TaskDeleteConfirmModal({ taskTitle, onConfirm, onCancel }: {
   taskTitle: string
   onConfirm: () => void
   onCancel: () => void
 }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [onCancel])
+
   return (
     <div
       className="fixed inset-0 z-[60] grid place-items-center bg-black/30 animate-[fadeSlideIn_.15s_ease]"

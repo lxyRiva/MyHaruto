@@ -1,7 +1,8 @@
 // 设置弹窗（当前仅 AI 名字）。RF-P3b 自 App 原样迁出：
 // showSettings 开关留 App 受控（App 条件渲染 = 每次打开重新挂载、草稿重置为当前 aiName）；
 // 保存经 onSave 上抛，由 App 内联 setDb 写 settings.aiName（写入后由 db useEffect 自动持久化）
-import { useState } from 'react'
+// v1.16：Escape 改容器级（原 input 局部 onKeyDown 焦点依赖是原病灶）；input 内 Enter 保存语义保留
+import { useEffect, useState } from 'react'
 
 export default function SettingsModal({ open, onClose, aiName, onSave }: {
   open: boolean
@@ -19,6 +20,15 @@ export default function SettingsModal({ open, onClose, aiName, onSave }: {
     onClose()
   }
 
+  // v1.16：容器级 Escape 关闭（对齐 FloatingMenu 写法）
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [onClose])
+
   if (!open) return null
 
   return (
@@ -35,7 +45,6 @@ export default function SettingsModal({ open, onClose, aiName, onSave }: {
           onChange={(e) => setAiNameDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') saveSettings()
-            if (e.key === 'Escape') onClose()
           }}
           placeholder="AI 角色显示名"
           className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700

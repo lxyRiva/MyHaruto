@@ -14,6 +14,7 @@ import Placeholder from './Placeholder'
 import Recent7View from '../../features/tasks/components/Recent7View'
 import BoardView from '../../features/tasks/components/BoardView'
 import TaskDetailPanel from '../../features/tasks/components/TaskDetailPanel'
+import TaskDeleteConfirmModal from '../../features/tasks/components/TaskDeleteConfirmModal'
 import { useTaskActions } from '../../features/tasks/hooks/useTaskActions'
 import { usePomodoro } from '../../features/pomodoro/hooks/usePomodoro'
 import { useHabits } from '../../features/habits/hooks/useHabits'
@@ -87,6 +88,7 @@ export default function MainArea({
   reopenPeriod: ImportantDayActions['reopenPeriod']
 }) {
   // 修正1：右栏宽度可拖拽调整（localStorage 持久化，260-480px；右栏私有布局态随组件迁出）
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [detailWidth, setDetailWidth] = useState<number>(() => {
     const v = Number(localStorage.getItem('mh-detail-panel-width'))
     return Number.isFinite(v) && v >= 260 && v <= 480 ? v : 320
@@ -216,7 +218,7 @@ export default function MainArea({
               onToggleDone={toggleTaskDone}
               onAddSubtask={addSubtaskInline}
               onPomodoro={(t) => setPomoTarget(t)}
-              onDeleteTask={(id) => { deleteTaskTree(id); setSelectedId(null) }}
+              onDeleteRequest={() => setConfirmDeleteId(selected.id)}
               onToggleChecklist={toggleChecklistItem}
               onAddChecklistItem={addChecklistItem}
               onUpdateChecklistItem={updateChecklistItem}
@@ -224,6 +226,19 @@ export default function MainArea({
             />
           </div>
         </aside>
+      )}
+
+      {/* 右栏删除确认（Fix3c-2 第9项：右栏删除改 deleteTaskTree+确认，与卡片右键同款 modal） */}
+      {confirmDeleteId && (
+        <TaskDeleteConfirmModal
+          taskTitle={db.tasks.find((t) => t.id === confirmDeleteId)?.title ?? ''}
+          onConfirm={() => {
+            deleteTaskTree(confirmDeleteId)
+            setSelectedId(null)
+            setConfirmDeleteId(null)
+          }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
       )}
     </>
   )

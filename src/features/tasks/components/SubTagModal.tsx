@@ -1,5 +1,6 @@
 // H2 标签新建/编辑弹窗（RF-P1 自 App.tsx 原样迁入）+ 色板/emoji 预设随迁导出
-import { useState } from 'react'
+// v1.16：容器级 Escape 关闭（原仅 name input Enter 局部监听；Escape 不依赖焦点）
+import { useEffect, useState } from 'react'
 
 // L2 新建清单 6 色板（原 App.tsx PALETTE 原样迁入并导出）
 export const PALETTE = ['#3d7ea6', '#5b8c5a', '#c97b4a', '#8e6bb3', '#b85c5c', '#4a9e9e']
@@ -28,6 +29,15 @@ export default function SubTagModal({ title, initial, onSave, onCancel }: {
   // 按码点切防止截半个字符；含 ZWJ(\u200D) 的组合 emoji（如 🧘‍♀️）是一个整体，保留不切
   const clampEmoji = (v: string) => (v.includes('\u200D') ? v : Array.from(v).slice(0, 2).join(''))
   const submit = () => ok && onSave({ emoji: clampEmoji(emoji), name: name.trim(), color })
+
+  // v1.16：容器级 Escape（name input 的 Enter=提交语义保留在 input onKeyDown）
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [onCancel])
 
   return (
     <div

@@ -1,5 +1,6 @@
 // 日期/时间选择组件集（RF-P2a 自 BoardView.tsx 原样迁入）
-import { useState } from 'react'
+// RF-Fix3c v1.16：DatePickerModal 补容器级 Escape（原零 Escape；对齐 FloatingMenu 写法）
+import { useEffect, useState } from 'react'
 
 export function localToday(): string {
   const d = new Date()
@@ -149,6 +150,15 @@ export function DatePickerModal({
     return localToday()
   })
   const diffDays = (a: string, b: string) => Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000)
+
+  // v1.16：容器级 Escape 关闭（不依赖焦点在哪个元素）
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [onCancel])
 
   const first = new Date(view.y, view.m, 1)
   const cells = Array.from({ length: 42 }, (_, i) => new Date(view.y, view.m, 1 - first.getDay() + i))
