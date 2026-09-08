@@ -61,7 +61,7 @@
 | RF-P5 | 数据多文件化（B 方案） | 1 | 中高 | P4 提交+pre-migration 快照 |
 | RF-P6a | 书影/旅游新功能 | 1 | 中 | P5 提交 |
 | RF-P6b | 死代码清扫 | 1 | 低 | P6a 提交 |
-| RF-Fix4 | 验收 bug+需求批量修复（池 16 项：**P1-P6 用户钦定序** + B1-B4/N1-N4 + R2-R3 对账；R1 已由 Fix3c 落地） | 1 | 中 | P6b 提交 |
+| RF-Fix4 | bug+需求批量（**P1-P6 已提前线 B 并行**；旧池 B/N/R 仍 P6b 后） | 2 | 中 | 线B独立锚/P6b 提交 |
 | RF-P7 | 设置中心四分区（前置门：细案待出） | 1 | 中 | Fix4 提交 |
 
 ---
@@ -316,14 +316,32 @@ AI 模板五件在仓库 data/ai/ 下且 git 已跟踪（`git ls-files data/`）
 
 ---
 
-## 十、RF-P6a：书影清单 + 旅游札记
+## 十、RF-P6a：书影清单 + 旅游札记（细案规格 v1，2026-09-08）
 
-**⚠️ 前置门：开工前规划 Agent 出 UI 细案规格卡，用户确认后才开发。** 本卡为骨架：
-- 数据：`data/albums/albums.json`、`data/travel/travel.json`，条目 `{id, groupKey(书影=YYYY-MM/旅游=地点), imagePath, caption, eventDate, sortOrder, createdAt}`；主进程新增 IPC `assets:import`（dialog 选图→复制进 `data/assets/<域>/`→返回相对路径）。
-- 页面：书影=按月相册流、跨年折叠；旅游=按地点分组。L1 两图标去 soon 接真页面。
-- 文件：`features/albums/{pages,components,hooks}/`、`features/travel/同构`、repository 增两域。
+> **前置门**：本细案经用户确认后才开发。数据读写走 repository（P4 产物）；P5 已落 albums/travel 域文件与 assets/ 目录。
 
-**验收**：建条目/导图/浏览/删除（删除留痕进 logs/changes）；数据落新域文件；全应用回归。回滚：reset 到 P5。
+**单一域设计（§10 精神）**：新建 **features/moments/** 单域承载两页面（AlbumsPage/TravelPage 共用组件与 hook），**不建 albums/travel 两个互拷的 feature**；数据文件仍分 `data/albums/albums.json`、`data/travel/travel.json` 两域。
+
+**数据模型**（MomentEntry，两域同构）：
+`{ id, category:'bookmovie'|'travel', groupKey, imagePath, caption, eventDate('YYYY-MM-DD'), sortOrder, createdAt }`
+- 书影 groupKey=`YYYY-MM`（月份）；旅游 groupKey=地点名（自由文本，输入时下拉已有地点去重）
+
+**页面规格**：
+- **书影（AlbumsPage）**：按月相册流——月份倒序分组 header（`2026年9月 · N 张`）；**跨年折叠**（年份 header 可开合，默认当年展开）；组内卡片网格（图片封面+caption 一行+日期），点击看大图（轻盒：居中放大+左右切换+Esc 关）
+- **旅游（TravelPage）**：按地点分组 header（`<地点> · N 条`，按最近条目倒序）；组内卡片流（图片+caption+日期）；地点右侧「+」快捷添加该地点条目
+- **新建/编辑（共用 MomentForm modal）**：选图（assets:import）+预览、caption 文本、日期选择（date.ts 工具）、分组选择（书影=月份 picker/旅游=已有地点下拉+新建）；编辑原地表单回填
+- **右键菜单**：编辑 / 更改分组 / 删除（TaskDeleteConfirmModal 式确认，删除留痕进 logs/changes）
+- **空态**：占位插画+「添加第一条」引导
+
+**主进程**：新增 IPC `assets:import`（dialog.showOpenDialog 多选图→复制进数据目录 `assets/<域>/<id>.<ext>`→返回相对路径数组）；repository 扩展 albums/travel 两域读写（StorageDriver 接口不动）。
+
+**L1 接线**：album/travel 两图标去置灰接真路由（P3c 已完成排序基建，本卡仅换页面指向）；PLACEHOLDER 两项移除（原 P6b 项提前清账）。
+
+**文件清单**：`features/moments/{pages/AlbumsPage.tsx, pages/TravelPage.tsx, components/MomentCard.tsx, components/MomentGroup.tsx, components/MomentForm.tsx, components/Lightbox.tsx, hooks/useMoments.ts, types.ts}` + repository 扩展 + electron/data/store.js 两域 + assets:import IPC + L1/MainArea 接线。
+
+**验收**：两页建/看/编/删全操作；书影按月流+跨年折叠；旅游按地点分组；图片导入落 assets/；删除留痕 logs/changes；L1 直达；全应用回归；新文件各 ≤500 行；moment 域无跨 feature import。
+**commit**：`feat(P6a): 书影清单+旅游札记（features/moments）`
+**回滚**：reset 到 P5 提交。
 
 ---
 
@@ -484,7 +502,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 
 ## 十六、RF-Fix4：验收 bug 批量修复（P6b 后 / P7 与收官前）
 
-> **执行时点**：P6b 完成后，规划层按下方池子出细目卡（逐条：根因/修法/验收）→ 开发修复 → 测试会话回归 → 用户验收 → 单 commit `fix(RF-Fix4): <清单摘要>`。**不混入 P6b**（P6b 是机械清扫+搬移审计卡）。回滚：reset 到 P6b 提交。
+> **执行时点（2026-09-08 变更：P 序列提前双线并行）**：**P1-P6 视图批量提前为开发 Agent 2 线 B，与线 A（P4→P5 数据链）并行**——文件域互斥（线 B=features/tasks/** 视图层；禁碰 electron/src/data/App.tsx/SettingsModal/shared/utils/date.ts，规划层裁定两条：P2 逾期组排序随全局新维度链不留第二套、P3 置顶用可选字段 isPinnedGroup? 免自愈——DEV_RULES §2 例外须报告报备）。旧池（B1-B4/N1-N4/R2-R3）仍在 P6b 后执行。规划层统一串行 commit（两会话禁 git add/commit）。
 
 **Bug 池（2026-09-08 重构：用户钦定优先序列在前，旧池归类其后）**：
 
