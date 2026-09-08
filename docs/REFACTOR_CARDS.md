@@ -540,6 +540,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 3. **Bug5（看板详情弹窗关闭后菜单滞留）**：属本卡范围，审计中定位根因修复（初判：菜单与弹窗各自独立外关，弹窗因外点关闭时 mousedown 同时落在菜单容器外→菜单本应同关；滞留=菜单外关判定被什么放行——修复后枚举回归）
 4. 交互审计通过+Bug5 修复 → 才允许 commit Fix3c-2
 5. **裁定备案**：子任务独立编辑（池 B1）+ 检查事项描述编辑（池 B4）确认为 Fix4 旧账，不阻塞本卡 commit
+6. **v1.16 追加（终验审查尾巴）**：**Escape 统一补齐**——盘点实证：DatePickerModal（DateTimePickers.tsx 内，连 onCancel 都未接）/TaskDeleteConfirmModal 零 Escape；SubTagModal/SettingsModal 仅 input onKeyDown 局部监听（焦点不在输入框即失效）。统一修法=容器级 `useEffect` + `window keydown`（Escape→onCancel/onClose），四 modal 全部对齐；验证=每 modal 打开后按 Escape 关闭（焦点在输入框内外各一次）。修完 Fix3c 才彻底干净
 
 **行为变化声明（方向已拍板，手测显式验证）**：看板新建补三字段｜右栏删除改递归+确认｜Popover 功能等价化
 **允许触碰**：features/tasks/{utils,components}/**、hooks/useTaskActions.ts、app/layout/MainArea.tsx（接线）、App.tsx（接线）、相关 docs
