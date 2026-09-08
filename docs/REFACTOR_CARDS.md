@@ -244,7 +244,9 @@ app/layout/SettingsModal.tsx      ← 设置弹窗迁出。状态归属：showSe
 新建 src/data/types.ts
 新建 electron/data/store.js   # defaultDb/loadDb（自愈整体迁入）/saveDb 自 main.js 迁入；
                               # saveDb 原子写（同目录 .tmp → fs.renameSync）；
-                              # startupBackup：启动时 db.json → backups/db-<时间戳>.json，滚动保留 7 份
+                              # startupBackup：启动时 db.json → backups/db-<时间戳>.json，滚动保留 7 份；
+                              # 数据根目录解析走 %APPDATA%/MyHaruto/config.json（{ dataDir }），
+                              # 缺省 %APPDATA%/MyHaruto/data/——P5 的自定义位置机制在此奠基
 修改 electron/main.js         # 瘦身为窗口+IPC 委托；preload 增加 openDataDir()（shell.openPath(dataDir)）；
                               # 设置弹窗加「打开数据文件夹」按钮（必做）
 修改 src/global.d.ts          # window.myharuto 增加 openDataDir(): Promise<void> 类型声明
@@ -264,7 +266,7 @@ app/layout/SettingsModal.tsx      ← 设置弹窗迁出。状态归属：showSe
 
 **目标布局**（`%APPDATA%/MyHaruto/data/`）：
 ```
-manifest.json                # { dataVersion: 2, migratedAt, appVersion }
+manifest.json                # { dataVersion, appVersion, lastMigratedAt }（版本升级/降级保护见步骤 7）
 user/settings.json
 tasks/tasks.json │ tasks/subTags.json │ tasks/sections.json
 focus-sessions.json
@@ -274,8 +276,11 @@ logs/operations.log          # 人读操作行
 logs/changes/YYYY-MM-DD.json # 删除留痕 {ts, domain, action:'delete', ids}
 backups/                     # pre-migration 快照 + 滚动备份
 ai/                          # AI 数据域：P5 只建仓库内空模板（见步骤 6），运行时实体 M5 起
+albums/ travel/              # P6a 起使用，本卡不建
+town/                        # P7/V3 起使用，本卡不建
 assets/                      # 用户上传资源（P6a 起使用），本卡不建
 ```
+**数据范围总则（2026-09-08 用户补充）**：用户数据根目录覆盖全部模块（tasks/habits/focus-sessions/important-days/period/sleep/albums/travel/ai/town/assets/logs/backups），**全部跟随用户指定的数据位置**（config.json dataDir，见步骤 8）；period/sleep 数据量小以根目录单文件形式存在（不建目录）。
 **步骤**：
 1. store.js 多文件 loadAll：manifest 判版本→读域→按域自愈（原 loadDb 逻辑拆到各域）→拼装 Db。
 2. persist：各域序列化与磁盘**字符串比对只写变化域**（原子写）；域数组变短→diff 被删 id→logs/changes 追加。
@@ -285,6 +290,16 @@ assets/                      # 用户上传资源（P6a 起使用），本卡不
    c. manifest 与 db.json 均不存在（**全新安装**）→ `defaultDb()` 初始化 → 直接按多文件结构写入 → 写 manifest → operations.log 记一条「首次初始化」。
 4. `scripts/verify-migration.mjs`（纯 node 内置，无新依赖）逐域 deepStrictEqual；package.json 加 `verify:data`。
 5. TECH.md/DEV_RULES 数据章节更新为 manifest 版本迁移。
+7. **版本更新机制（manifest 三字段 dataVersion/appVersion/lastMigratedAt）**：
+   升级=新版本启动读 dataVersion → 落后于应用支持版本则跑幂等迁移 → 写回新版本号；
+   **降级保护**=数据 dataVersion > 应用支持版本 → 弹窗提示需升级应用，不强行加载（防旧代码写坏新数据）；
+   更新通知（GitHub Releases API）P7 实现，本卡只留 appVersion 字段。
+8. **自定义数据位置**：
+   - 配置固定在 `%APPDATA%/MyHaruto/config.json`（{ dataDir }），与数据目录分离（config 永远在固定位置，数据可搬）；
+   - 首次启动弹窗选位置（默认 %APPDATA%/MyHaruto/data/，可跳过用默认）；
+   - 设置界面新增「数据位置」区块：显示当前路径 + 更改位置 + 打开数据文件夹（P4 的按钮并入本区块）；
+   - 更改位置流程=复制全部数据到新目录 → 逐域校验 → 更新 config.json → 提示重启生效；
+   **复制/校验任一步失败则回滚删除新目录残留，不更新 config.json，原位置继续生效**。
 6. **AI 数据域模板（仓库内 data/，本卡新建；运行时实体 M5 起在 %APPDATA% 同构落地）**：
    `data/ai/chat-messages.json`（空数组 `[]`）、`data/ai/persona.md`（默认人设模板）、
    `data/ai/memories/{fragments,episodes,entity-profiles}.json`（空结构）、
@@ -381,6 +396,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 2. **外观**：留出 UI 皮肤切换接口（settings.skinId 字段已存在）。
 3. **桌面部件**：留出桌面小部件接口（Electron 特性，本期只留口不做实现）。
 4. **API 接入**：多模型 API Key 配置入口（智谱/DeepSeek/Kimi/自定义）。⚠️ 本地明文存储需在细案声明（单机单人可接受）；是 M5 AI 接入的直接前置。
+5. **数据位置**（2026-09-08 补充；P5 已建基础能力，P7 收编为设置区块）：显示当前数据路径 + 更改位置（复制→校验→改 config→重启生效，失败回滚）+ 打开数据文件夹；更新通知（GitHub Releases API）本卡实现——P5 只留 appVersion 字段。
 
 **验收线**：待细案定稿后补。**回滚**：reset 到 P6b 提交。
 
@@ -651,4 +667,5 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.20 | **数据层设计补充（用户 2026-09-08，P4/P5/P7 分配）**：数据范围总则=全模块（tasks/habits/focus-sessions/important-days/period/sleep/albums/travel/ai/town/assets/logs/backups）全部跟随用户指定位置，period/sleep 小数据量保持根单文件；**自定义位置机制**（config.json@%APPDATA% 固定+dataDir 可搬/P4 store.js 奠基读取、P5 全量实现：首次选位+设置「数据位置」区块+复制校验回滚流程）；**版本更新机制**（manifest dataVersion/appVersion/lastMigratedAt 对齐+降级保护不强行加载+更新通知 P7 GitHub Releases）；README 增「📁 你的数据存在哪」教程 |
 | v1.19 | **AI 模块设计基线入册（用户 2026-09-08 插播，自主分配）**：①PRD §3.7 重写——AI 设计原则（美术资产≠AI 能力，2D/3D 不影响任务/记忆/对话）+CharacterStage/character-state.json 渲染解耦+消息统一模型（chat-messages.json，sourceType chat/task/importantDay/period/town，时间线统一，记忆库唯一提取源）②TECH 新增 §3.4 AI 数据域（模型/模板集/隔离铁律/渲染解耦）③RF-P5 卡更新：ai/ 行改"仓库模板 P5 建、实体 M5 起"+步骤 6 AI 模板五件+验收加 git ls-files data/ 与无用户数据提交史校验 ④README 补数据与隐私节。数据隔离铁律=仓库 data/ 只放空模板+默认人设，用户数据 %APPDATA% 永不上传 |
