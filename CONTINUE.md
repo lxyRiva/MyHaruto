@@ -30,7 +30,7 @@
 - 测试会话只跑验收清单、出测试报告，禁止修改代码；问题回报，开发会话修复。
 - 审查会话开工第一条消息显式声明「切换为审查模式」，全程只读。
 - 规划会话只出卡不改码。各角色经 CONTINUE.md 接力，每卡收尾更新为下一卡状态。
-- 当前阶段：**RF-P3b 已提交（66480d2）；**RF-Fix3c（任务系统视图一致性统一，六组分叉收口+DEV_RULES §10）细目卡已出、**待用户确认范围放行**；RF-P3c 暂缓让位（排 Fix3c 后）；bug 池 9 项在 RF-Fix4（R1 已转 Fix3c）；RF-P7 设置中心（Fix4 后，v1.0.0 收官随其后）**。后续循环以 docs/REFACTOR_CARDS.md 为准。
+- 当前阶段：**RF-Fix3c 全卡闭环（Fix3c-1=8ca48e7、Fix3c-2=0564917，六组分叉收口+三手测 Bug+Bug5+Escape 补齐全落）；产品双视图定位已写入 PRD §2.1/DEV_RULES §10/README；RF-P3c（日期收口+useLocalStorage+L1 排序，P3 收官段）复位待派发；bug 池 10 项+N4 可选项在 RF-Fix4（P6b 后）；RF-P7 设置中心（Fix4 后，v1.0.0 收官随其后）**。后续循环以 docs/REFACTOR_CARDS.md 为准。
 
 ## 我自己要会的命令（全部）
 
