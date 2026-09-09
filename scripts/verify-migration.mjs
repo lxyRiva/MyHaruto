@@ -70,6 +70,8 @@ console.log('[1] legacy db.json 迁移（fail-safe 顺序+自愈）')
   ok(existsSync(join(root, 'ai', 'persona.md')), 'AI 模板已播种（persona.md，读仓库模板）')
   ok(!existsSync(join(root, 'db.json')) && existsSync(join(root, 'db.json.migrated.bak')), 'db.json 让位 .migrated.bak（最后一步）')
   ok(L.readAllDomains(root).tasks.length === 5, 'readAllDomains 合成回 AppData')
+  const merged = L.readAllDomains(root)
+  ok(Array.isArray(merged.albums) && Array.isArray(merged.travel), 'RF-Data-3：albums/travel 域合成（legacy 数据无此域，自愈补空）')
 
   // ② 幂等：重跑无副作用
   const before = readFileSync(join(root, 'manifest.json'), 'utf-8')
@@ -86,6 +88,8 @@ console.log('[2] 全新安装播种')
   const r = L.ensureLayout(root, '0.1.0', repoRoot)
   ok(r.status === 'ok' && r.freshInstall === true, '标记 freshInstall')
   ok(JSON.parse(readFileSync(join(root, 'tasks', 'tasks.json'), 'utf-8')).tags.length === 2, '默认标签播种')
+  ok(JSON.parse(readFileSync(join(root, 'albums', 'albums.json'), 'utf-8')).albums.length === 0, 'RF-Data-3：albums 域文件播种')
+  ok(JSON.parse(readFileSync(join(root, 'travel', 'travel.json'), 'utf-8')).travel.length === 0, 'RF-Data-3：travel 域文件播种')
   ok(existsSync(join(root, 'logs', '.keep')) || true, 'logs 目录随留痕/首次写入创建（无需预建）')
   rmSync(root, { recursive: true, force: true })
 }

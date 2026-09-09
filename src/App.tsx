@@ -21,7 +21,7 @@ export type PageKey =
   | 'important' | 'album' | 'travel' | 'chat' | 'town'
 
 export default function App() {
-  const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default', aiName: DEFAULT_AI_NAME } })
+  const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], albums: [], travel: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default', aiName: DEFAULT_AI_NAME } })
   const [loaded, setLoaded] = useState(false)
   // 降级保护（RF-Data-2）：数据版本高于应用支持时拒绝加载，只提示升级
   const [loadError, setLoadError] = useState<string | null>(null)

@@ -8,7 +8,7 @@ const DATA_VERSION = 1
 
 // 域定义：name = 域目录，keys = AppData 上的键（迁移时从旧单库拆出，加载时合并回）
 // 总则卡定：tasks/habits/focus-sessions/important-days/period[单文件]/sleep[单文件]；
-// albums/travel 后置域 RF-Data-3 落位；town/assets 本卡不建
+// albums/travel 两域 RF-Data-3 落位（UI=RF-Moments）；town/assets 后置域本卡不建
 const DOMAINS = [
   { name: 'tasks', keys: ['tasks', 'tags', 'subTags', 'sections'] },
   { name: 'habits', keys: ['habits', 'habitRecords'] },
@@ -16,6 +16,8 @@ const DOMAINS = [
   { name: 'important-days', keys: ['importantDays'] },
   { name: 'period', keys: ['periodRecords'] },
   { name: 'sleep', keys: ['sleepRecords'] },
+  { name: 'albums', keys: ['albums'] },
+  { name: 'travel', keys: ['travel'] },
 ]
 const SETTINGS_KEYS = ['settings']
 const MANIFEST_FILE = 'manifest.json'
@@ -38,6 +40,8 @@ function defaultDb() {
     importantDays: [],
     periodRecords: [],
     sleepRecords: [],
+    albums: [], // 书影清单（RF-Data-3；UI 待 RF-Moments）
+    travel: [], // 旅游札记（同上）
     settings: {
       theme: 'light',
       harutoMetDate: new Date().toISOString().slice(0, 10),
@@ -78,6 +82,9 @@ function selfHealDb(db) {
   // 四层结构自愈：旧数据补齐 H2标签/看板分组/任务新字段/角色设置
   if (!Array.isArray(db.subTags)) db.subTags = []
   if (!Array.isArray(db.sections)) db.sections = []
+  // RF-Data-3 两域：存量数据（Data-2 期）无此二字段，undefined 即默认空（加字段铁律）
+  if (!Array.isArray(db.albums)) db.albums = []
+  if (!Array.isArray(db.travel)) db.travel = []
   if (!db.settings || typeof db.settings !== 'object') db.settings = defaults.settings
   if (!db.settings.harutoMetDate) db.settings.harutoMetDate = new Date().toISOString().slice(0, 10)
   if (!db.settings.currentCharacterId) db.settings.currentCharacterId = 'haruto'

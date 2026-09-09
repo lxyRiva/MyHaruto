@@ -105,6 +105,17 @@ export interface SleepRecord {
   bedtime: string // HH:MM
 }
 
+// 书影/旅游统一条目（RF-Data-3 建数据域；完整 UI = RF-Moments 独立卡）
+export interface MomentEntry {
+  id: string
+  category: string // 子类（书/影/剧…，枚举随 RF-Moments UI 卡定稿）
+  groupKey: string // 分组键（如旅次、书单）
+  imagePath: string // 图片路径（assets:import 通道归 RF-Moments，本卡不建）
+  caption: string
+  eventDate: string | null // YYYY-MM-DD
+  sortOrder: number
+  createdAt: string
+}
 
 export interface Db {
   tasks: Task[]
@@ -117,6 +128,8 @@ export interface Db {
   importantDays: ImportantDay[]
   periodRecords: PeriodRecord[]
   sleepRecords: SleepRecord[]
+  albums: MomentEntry[] // 书影清单（RF-Data-3 起域文件落位，UI 待 RF-Moments）
+  travel: MomentEntry[] // 旅游札记（同上）
   settings: {
     theme: 'light' | 'dark'
     harutoMetDate: string // 首次启动日期，YYYY-MM-DD
