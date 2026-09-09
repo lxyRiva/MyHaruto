@@ -2,18 +2,19 @@
 
 ## 项目与锚点
 MyHaruto（Electron+React18+TS strict+Tailwind）重构线进行中。
-HEAD=6d9567b（P3c 已推送）｜工作区干净｜tag：v0.1.0=refactor-start=7b4978f、fix3c-pre=88907d3
+HEAD=cbc8c3d（RF-Data+RF-Polish 六笔已推送）｜工作区干净｜tag：v0.1.0=refactor-start=7b4978f、fix3c-pre=88907d3
 
 ## 重构进度（总集 docs/REFACTOR_CARDS.md v1.23）
-✅ P1/P2a/P2b/P3a/P3b/P3c/Fix1/2/3/3a/3c(1+2) ｜ ⏳ **双线第二波进行中**
+✅ P1/P2a/P2b/P3a/P3b/P3c/Fix1/2/3/3a/3c(1+2)/RF-Data(1-3)/RF-Polish-P1~P6 ｜ ⏳ 单线待派：RF-Moments（细案待批）
 → RF-Moments/RF-Clean/RF-Polish旧池/RF-Release/v1.0.0
 （命名映射：P6b=RF-Clean，Fix4=RF-Polish，P7=RF-Release；Fix4-P1~P6=RF-Polish 线 B 并行中）
 
 ## 当前会话分工（双线并行期）
 - 规划（本会话）：出卡/串行 commit/盯门；每阶段收尾更新本文件
-- 开发 Agent 1（线 A）：RF-Data 三 commit 一次跑全卡（repository/多文件化/书影旅游模型占位）
-- 开发 Agent 2（线 B）：RF-Polish-P1→P6 视图批量（原开工包生效，开工锁重跑）
+- 开发 Agent 1：RF-Data 三笔已交付（39692f3/09d97ae/7f0ff27）；下一卡 RF-Moments 待批
+- 开发 Agent 2：RF-Polish-P 序列已交付（c8b0208）；待命
 - 测试+审查：合并单会话（测试→审查→一份合并报告）
+- ⚠️ 双线模式已废弃（2026-09-09 用户终审），严格单线串行
 - 测试/审查：按分级验收表召唤
 
 ## 分级验收（2026-09-08 定）
@@ -31,9 +32,7 @@ HEAD=6d9567b（P3c 已推送）｜工作区干净｜tag：v0.1.0=refactor-start=
 tsc --noEmit 零错误 → npm run build → npm run dev 自测
 
 ## 下一步
-双线并行中：线 A 交 RF-Data 合并报告（测试+审查合并会话验）→ 手测 → 三笔授权 commit
-线 B 交 RF-Polish-P 序列报告 → 手测 → commit；两线 commit 由规划层串行落
-shared/types.ts=共享热区：两线都只做追加式修改
+用户批 RF-Moments 细案 v1（总集「十、」节）→ 单线派发 → RF-Clean → RF-Polish 旧池 → RF-Release → v1.0.0
 ## 节俭令（2026-09-09）
 报告四项制（清单/diff摘要3-5行/✅❌/遗留）不贴代码；测试三件套；审查仅搬移迁移类；非阻塞 bug 进池
 
