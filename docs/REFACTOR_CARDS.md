@@ -67,11 +67,11 @@ P4/P5 开发一次跑完全卡再交付，不逐步对话确认；测试审查�
 | RF-P3c | 日期收口+useLocalStorage+L1 排序 | 1 | 中低 | Fix3c 提交（✅ 6d9567b） |
 | **RF-Data** | **数据层合并卡**（原 P4+P5+P6a数据部分；3 commit：repository收口 / 多文件化+自定义位置+版本管理+开源隔离 / 书影旅游数据模型+占位；细目见「十八A」） | 3 | 高 | P3c 提交（✅ 39692f3/09d97ae/7f0ff27） |
 | RF-B1 | 子任务右栏独立编辑（Bug 池 B1 提前，低风险档） | 1 | 低 | RF-Data 提交 |
-| RF-Moments | 书影/旅游完整 UI（原 P6a UI 部分；细案 v1 已在总集待批） | 1 | 中 | RF-B1 提交 |
-| RF-Clean | 死代码清扫（原 P6b；审查登记累计项） | 1 | 低 | RF-Moments 提交 |
-| RF-Town-MVP | 小镇第一场景：Haruto 的房间陪伴（细案见「十八B」） | 1 | 中 | RF-Clean 提交 |
-| RF-Polish | bug+需求批量（原 Fix4；P1-P6 已由线 B 落 c8b0208；旧池 B/N/R 仍本卡） | 2 | 中 | RF-Town-MVP 提交 |
-| RF-Release | 设置中心五分区+更新通知（原 P7；前置门：细案待出）→v1.0.0 收官 | 1 | 中 | RF-Polish 提交 |
+| RF-Polish | bug+需求批量（原 Fix4；P1-P6 已由线 B 落 c8b0208；**旧池 B2-B4/N1-N5/R 本卡**） | 2 | 中 | RF-B1 提交 |
+| RF-Clean | 死代码清扫（原 P6b；审查登记累计项） | 1 | 低 | RF-Polish 提交 |
+| RF-Town-MVP | 小镇第一场景：Haruto 的房间陪伴（**3D 方案**，细案见「十八B」v2） | 1 | 中 | RF-Clean 提交 |
+| RF-Moments | 书影/旅游完整 UI（原 P6a UI 部分；细案 v1 已在总集待批） | 1 | 中 | RF-Town-MVP 提交 |
+| RF-Release | 设置中心五分区+更新通知（原 P7；前置门：细案待出）→v1.0.0 收官 | 1 | 中 | RF-Moments 提交 |
 
 ---
 
@@ -552,7 +552,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 
 **前提实况（规划层取证 2026-09-09）**：
 - data/town/ 三件套（scenes/character-state/activity-log）**RF-Data 未建**（当时卡面标注 town/ 后置）——本卡自建，兑现 P5 布局占位
-- 角色立绘 4 态**已就绪**：`WorkBuddy生成存储/myharuto美术资产/` haruto_idle/lean/press/night_press.png（含绿幕原片与抠图脚本）——拷贝处理入 public/assets/town/
+- 角色 2D 立绘 4 态（`WorkBuddy生成存储/myharuto美术资产/` haruto_idle/lean/press/night_press.png）**随 3D 方案作废**，仅作占位图/宣传图；3D 模型（haruto.glb+动作片段）待动画师制作（缺口见技术方案）
 - **房间背景缺失**（用户所述「小镇场景」目录不存在）——默认方案 b：CSS 室内渐变占位（暖色地板+墙面色块+窗光），资产生成后替换（RoomStage 解耦天然支持）；用户选 a 则 HY4 生成后提供
 
 **数据（data/town/，本卡自建）**：
@@ -560,14 +560,21 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 - `character-state.json`：`{haruto:{state:'idle', updatedAt}}`——状态枚举 idle/talking/focusing（MVP 只渲染 idle 单图；state→立绘映射即 CharacterStage 接口雏形，PRD §3.7 解耦原则兑现第一版）
 - `activity-log.json`（jsonl）：陪伴事件 `{ts, type:'accompany', taskId, minutes}` 追加——**记忆库预留口子**（M6 记忆库可从本文件提取陪伴史）
 
-**组件与交互流**：
-- `features/town/{pages/TownPage.tsx, components/RoomStage.tsx, components/CharacterStage.tsx, hooks/useTown.ts}`
-- L1 town 图标：去置灰可进 TownPage（**保持锚底**，P3c 排序基建不动）
-- TownPage = RoomStage（背景+立绘，立绘点击热区）→ 点角色 → 任务选择浮层（**复用 focusPool 任务池**，同专注页口径）→ 选中 → `startPomo` 发起专注（**复用 usePomodoro 全局状态机**，PomodoroBar 浮条照常）→ **右栏挂 TaskDetailPanel**（MainArea 右栏路由加 town 分支挂载点=「右栏布局适配预留挂载点」兑现）
-- 专注完成 → focusSessions 正常记录（时长归并铁律自动生效）+ activity-log 追加陪伴事件
-- 角色动作接口预留：character-state 的 state 字段渲染层只读映射；记忆库口子：activity-log 结构化事件
+**技术方案 v2（2026-09-09 更正：3D，作废 2D PNG 立绘方案）**：
+- **技术选型（依赖已获用户批准，DEV_RULES §4 例外登记）**：`three` + `@react-three/fiber` 两个新 npm 依赖；模型格式 `.glb/.gltf`（开放标准，含骨骼动画与 blendshape）。如实现需 `@react-three/drei`（GLTF 加载器等工具集）须再次申请。
+- **CharacterStage = 3D Canvas 容器**：加载 glb 模型渲染角色；character-state.json 的 state → 3D 动画片段映射（idle/talking/companion 等动作由动画师提供）
+- **资产加载优先级**：用户数据目录 assets/ > 项目 public/assets/（用户可放自定义模型覆盖默认）
+- **旧 2D 立绘资产作废**：HY4 生成 PNG 仅作占位图/宣传图用途
+- **⚠️ 模型资产缺口（前置）**：`haruto.glb`（含 idle/talking/companion 动作片段）尚不存在，需动画师制作。到位前开发以 three 占位几何体推进交互流（选任务/番茄钟/日志全链路可用），glb 到位后仅替换模型文件（CharacterStage 解耦保证零代码改动）
 
-**验收**：L1 进房间（背景占位+立绘 idle）；点角色弹任务池→选任务→右栏出 TaskDetailPanel+番茄钟启动；专注完成统计+1 且 activity-log 出陪伴行；town 域无跨 feature import；新文件各 ≤500 行；全应用回归（L1 排序 chat/town 仍锚底）。
+**组件与交互流**：
+- `features/town/{pages/TownPage.tsx, components/RoomStage.tsx, components/CharacterStage.tsx（3D Canvas）, hooks/useTown.ts}`
+- L1 town 图标：去置灰可进 TownPage（**保持锚底**，P3c 排序基建不动）
+- TownPage = RoomStage（背景+3D 角色画布，角色点击热区）→ 点角色 → 任务选择浮层（**复用 focusPool 任务池**，同专注页口径）→ 选中 → `startPomo` 发起专注（**复用 usePomodoro 全局状态机**，PomodoroBar 浮条照常）→ **右栏挂 TaskDetailPanel**（MainArea 右栏路由加 town 分支挂载点=「右栏布局适配预留挂载点」兑现）
+- 专注完成 → focusSessions 正常记录（时长归并铁律自动生效）+ activity-log 追加陪伴事件
+- 记忆库口子：activity-log 结构化事件
+
+**验收**：L1 进房间（背景占位+3D 角色画布[glb 或占位几何]）；点角色弹任务池→选任务→右栏出 TaskDetailPanel+番茄钟启动；专注完成统计+1 且 activity-log 出陪伴行；用户 assets/ 模型覆盖优先级生效；town 域无跨 feature import；新文件各 ≤500 行；全应用回归（L1 排序 chat/town 仍锚底）。
 **commit**：`feat(RF-Town-MVP): 小镇第一场景——Haruto 的房间陪伴`
 **回滚**：reset 到 RF-Clean 提交。
 
@@ -759,6 +766,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.26 | **序列再调**（用户定稿）：RF-B1→**RF-Polish 旧池**→RF-Clean→RF-Town-MVP→**RF-Moments**→RF-Release；**RF-Town-MVP 技术方案 v2=3D**（three+@react-three/fiber 依赖批准入册[§4 例外]、glb/gltf、state→动画片段、用户 assets/>public 资产优先级、CharacterStage=3D Canvas、2D 立绘作废仅占位宣传；⚠️ haruto.glb 缺口=动画师制作，到位前占位几何推进）；**DEV_RULES 新增 §11 工作区边界**（双目录固定/外部先报告征得同意/可联网） |
 | v1.25 | **RF-Data/RF-Polish 深度核查七项通过**（剥离干净 c8b0208/MainArea 误报定性/手测终态代码零差异/verify:data 32-0）；**RF-B1 提前**（子任务右栏编辑，Bug 池 B1）；**RF-Town-MVP 细案入册**（用户 2026-09-08 要求流转丢失致规划层漏登，已承认——一个房间/一个角色/陪伴交互；取证：立绘 4 态已有、data/town 未建本卡自建、房间背景缺默认 CSS 占位）；**序列定稿：RF-B1→RF-Moments→RF-Clean→RF-Town-MVP→RF-Polish旧池→RF-Release→v1.0.0** |
 | v1.24 | P3c 验收提交 **6d9567b**（17 文件 +192/−136，M1 修补 sanitize 落地，测试+审查+手测全过）；**测试+审查合并单会话**（高风险档一个会话先测后审出一份合并报告）；**双线第二波铺开**：线 A=RF-Data 三 commit（开发 1）、线 B=RF-Polish-P1→P6（开发 2 复工） |
 | v1.23 | **RF-Data 合并卡**（P4+P5+P6a数据部分→3 commit 一次跑完；书影旅游完整 UI 拆出 RF-Moments 独立卡）；**P6b/Fix4/P7 更名 RF-Clean/RF-Polish/RF-Release**；总纲四条节俭令（报告四项制不贴代码/测试三件套轻量化/审查仅搬移迁移类[RF-Data-2 迁移专项例外]/非阻塞 bug 严格进池）；RF-Data 合并范围待用户确认后派发 |

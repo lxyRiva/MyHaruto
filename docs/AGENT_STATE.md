@@ -33,6 +33,9 @@ tsc --noEmit 零错误 → npm run build → npm run dev 自测
 
 ## 下一步
 派 RF-B1（低风险档：开发→手测→commit）；RF-Moments 细案待用户批；RF-Town-MVP 房间背景资产缺口（默认 CSS 占位）
+## 工作区边界（DEV_RULES §11）
+工作目录固定 D:\Software\Zcode_appdata 与 D:\Software\Zcode；两目录外禁搜索/读写，需要外部文件先报告路径征得用户同意；允许联网
+
 ## 节俭令（2026-09-09）
 报告四项制（清单/diff摘要3-5行/✅❌/遗留）不贴代码；测试三件套；审查仅搬移迁移类；非阻塞 bug 进池
 
