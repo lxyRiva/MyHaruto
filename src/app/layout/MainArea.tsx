@@ -15,6 +15,7 @@ import Recent7View from '../../features/tasks/components/Recent7View'
 import BoardView from '../../features/tasks/components/BoardView'
 import TaskDetailPanel from '../../features/tasks/components/TaskDetailPanel'
 import TaskDeleteConfirmModal from '../../features/tasks/components/TaskDeleteConfirmModal'
+import { DatePickerModal } from '../../features/tasks/components/DateTimePickers'
 import { useLocalStorage } from '../../shared/hooks/useLocalStorage'
 import { useTaskActions } from '../../features/tasks/hooks/useTaskActions'
 import { usePomodoro } from '../../features/pomodoro/hooks/usePomodoro'
@@ -91,6 +92,8 @@ export default function MainArea({
   // 修正1：右栏宽度可拖拽调整（RF-P3c 修补卡：useLocalStorage 全权接管读写，260-480 合法域校验
   // 经 sanitize 迁入（读时清洗非法值回退 320），组件内零裸 localStorage）
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  // RF-B1 P0-1：右栏日期行可点开日期编辑（此前 TaskDetailPanel 未透传 onEditDate，日期行为纯展示）
+  const [detailDateOpen, setDetailDateOpen] = useState(false)
   const [detailWidth, setDetailWidth] = useLocalStorage<number>(
     'mh-detail-panel-width',
     320,
@@ -225,9 +228,24 @@ export default function MainArea({
               onAddChecklistItem={addChecklistItem}
               onUpdateChecklistItem={updateChecklistItem}
               onDeleteChecklistItem={deleteChecklistItem}
+              onEditDate={() => setDetailDateOpen(true)}
             />
           </div>
         </aside>
+      )}
+
+      {/* 右栏日期编辑 modal（RF-B1 P0-1：与看板弹窗同能力；一次 patch 存 dueDate+提醒） */}
+      {detailDateOpen && selected && (
+        <DatePickerModal
+          initialDueDate={selected.dueDate}
+          initialRemindAt={selected.remindAt ?? null}
+          initialRemindDays={selected.remindDaysBefore ?? null}
+          onSave={(dueDate, remindAt, remindDaysBefore) => {
+            updateTask(selected.id, { dueDate, remindAt, remindDaysBefore })
+            setDetailDateOpen(false)
+          }}
+          onCancel={() => setDetailDateOpen(false)}
+        />
       )}
 
       {/* 右栏删除确认（Fix3c-2 第9项：右栏删除改 deleteTaskTree+确认，与卡片右键同款 modal） */}

@@ -16,6 +16,10 @@
   mh-day-repeat-{id}、mh-day-pinned-{id}、mh-day-lunar-{id}、mh-sidebar
   （注意模板串写法，开发时 grep 复核补全）。
 - 加字段铁律：Task/Db 新字段必须同时给 default 值 + 主进程自愈兜底，旧数据 undefined 即默认。
+- **数据根解析约定（2026-09-09，RF-Data 加固后强制）**：用户数据根=`%APPDATA%/MyHaruto/config.json`
+  的 dataDir（可自定义），**默认根下可能存在迁移残留副本，不是活数据**。任何脚本/测试/排查读用户数据
+  前必须先读 config.json 解析 dataRoot，禁止硬编码 `%APPDATA%/MyHaruto/data`；渲染端一律走 repository，
+  主进程一律走 store.js 的 resolveRoot()。
 
 ## 3. 代码规模
 - 新文件 ≤500 行、新函数 ≤50 行。存量超标文件（ImportantDays/Habits 等）

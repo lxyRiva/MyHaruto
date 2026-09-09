@@ -21,6 +21,7 @@ export default function TaskDetailPanel({
   onAddChecklistItem,
   onUpdateChecklistItem,
   onDeleteChecklistItem,
+  onEditDate,
 }: {
   task: Task
   aiName: string
@@ -39,6 +40,8 @@ export default function TaskDetailPanel({
   onAddChecklistItem: (taskId: string, text: string) => void
   onUpdateChecklistItem: (taskId: string, itemId: string, patch: Partial<ChecklistItem>) => void
   onDeleteChecklistItem: (taskId: string, itemId: string) => void
+  /** 传入时日期行可点开日期编辑（与看板弹窗同能力）；不传 = 纯展示 */
+  onEditDate?: () => void
 }) {
   return (
     <>
@@ -57,6 +60,7 @@ export default function TaskDetailPanel({
         onAddChecklistItem={onAddChecklistItem}
         onUpdateChecklistItem={onUpdateChecklistItem}
         onDeleteChecklistItem={onDeleteChecklistItem}
+        onEditDate={onEditDate}
       />
 
       {/* 动作行（P2b 映射表：🍅开始专注 / 🗑删除；删除确认在 MainArea） */}

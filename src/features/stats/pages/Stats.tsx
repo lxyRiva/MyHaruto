@@ -161,15 +161,16 @@ export default function Stats({ focusSessions, sleepRecords, tasks, tags }: {
   }, [focusSessions, viewMode, todayStr, monthStr, yearStr]);
 
   /**
-   * 饼图数据：
-   * - 日视图：按具体任务（含子任务）逐个统计
-   * - 月/年视图：子任务时长沿链并入最顶层主任务
+   * 饼图数据（RF-B1 P0-2 起：三视图统一按主任务归并，子任务时长沿 parentTaskId/masterTaskId 链并入）：
+   * - 子任务粒度明细保留在专注记录列表，饼图层级口径一致便于"主任务不增加"类核对
    * - 配色：抛弃标签色，改用名家色板按序循环分配（时长降序后依次取色）
    */
   const pieData = useMemo(() => {
     const minutesByTask = new Map<string, number>();
     for (const session of periodSessions) {
-      const key = viewMode === 'day' ? session.taskId : rootTaskIdOf(session.taskId);
+      // RF-B1 P0-2（产品语义 2026-09-09 用户令）：子任务番茄一律归并计入主任务，三视图统一；
+    // 子任务粒度明细保留在「今日专注记录」列表（按 session 展示），饼图不再按子任务直配
+    const key = rootTaskIdOf(session.taskId);
       minutesByTask.set(key, (minutesByTask.get(key) ?? 0) + session.minutes);
     }
     return Array.from(minutesByTask.entries())

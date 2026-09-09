@@ -25,10 +25,32 @@ function writeConfig(cfg) {
 }
 
 // 数据根：config.dataDir 优先；缺省 userData/data（与 RF-Data-1 前旧路径一致，老用户无感）
-function dataRoot() {
-  const cfg = readConfig()
-  if (cfg.dataDir && typeof cfg.dataDir === 'string' && cfg.dataDir.trim()) return cfg.dataDir.trim()
+function defaultRoot() {
   return path.join(app.getPath('userData'), 'data')
+}
+
+// RF-Data 加固（2026-09-09）：三态解析——config 损坏（damaged）或自定义目录丢失（root-missing）
+// 时**不再静默回退默认根**（默认根可能残留旧数据副本，静默切换=用户看到「数据回到过去」），
+// 而是向渲染端返回错误态阻断加载（App 渲染提示页，数据零风险）
+function resolveRoot() {
+  const file = configFile()
+  if (!fs.existsSync(file)) return { status: 'default', root: defaultRoot() }
+  let cfg
+  try {
+    cfg = JSON.parse(fs.readFileSync(file, 'utf-8'))
+  } catch {
+    return { status: 'damaged', root: defaultRoot(), file }
+  }
+  if (cfg && typeof cfg.dataDir === 'string' && cfg.dataDir.trim()) {
+    const root = cfg.dataDir.trim()
+    return { status: fs.existsSync(root) ? 'custom' : 'root-missing', root, file }
+  }
+  return { status: 'default', root: defaultRoot() }
+}
+
+// 兼容封装：只取根路径（open-dir/backup 等非加载路径使用；加载路径必须走 resolveRoot）
+function dataRoot() {
+  return resolveRoot().root
 }
 
 // ---------- 数据源模式：multi = 多文件域布局；legacy = 迁移失败回退旧单文件 ----------
@@ -117,6 +139,19 @@ async function changeDataDir() {
   if (fs.existsSync(path.join(target, 'manifest.json'))) {
     return { ok: false, error: '目标位置已存在 MyHaruto 数据，为防覆盖已取消' }
   }
+  // RF-Data 加固（2026-09-09）：目标不得位于当前数据目录/应用目录内部（防递归自复制），
+  // 当前数据目录也不得位于目标内部（把正在用的数据目录搬进新目录）
+  const insideOf = (child, parent) => {
+    const rel = path.relative(parent, child)
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+  }
+  const appDir = app.getAppPath()
+  if (insideOf(target, current) || insideOf(current, target)) {
+    return { ok: false, error: '新位置不能与当前数据目录互相嵌套，请选择独立的目录' }
+  }
+  if (insideOf(target, appDir)) {
+    return { ok: false, error: '新位置不能位于应用程序目录内部（会成为仓库/安装包的一部分）' }
+  }
   try {
     fs.cpSync(current, target, {
       recursive: true,
@@ -140,7 +175,23 @@ function initStore() {
   ipcMain.handle('db:get', async () => {
     // P0 修复（RF-Data-2 验证实锤）：必须接收选位结果——选了新位置时 ensureLayout/
     // startupBackup/loadDb 全链都要用新 root；取消时 firstRunChooseDir 原样返回传入 root
-    let root = dataRoot()
+    // RF-Data 加固：config 损坏 / 自定义数据目录丢失 → 阻断加载返回错误态（绝不静默换根读残留）
+    const resolved = resolveRoot()
+    if (resolved.status === 'damaged') {
+      return {
+        status: 'config-error',
+        file: resolved.file,
+        message: `数据位置配置文件损坏（${resolved.file}）。为防加载到旧数据副本，应用未加载数据。请修复或删除该配置文件后重启（删除后将使用默认位置）。`,
+      }
+    }
+    if (resolved.status === 'root-missing') {
+      return {
+        status: 'root-missing',
+        root: resolved.root,
+        message: `自定义数据目录不存在（${resolved.root}）。可能被移动、删除或所在磁盘未挂载。数据未做任何修改；请恢复该目录，或修复配置文件后重新选择位置。`,
+      }
+    }
+    let root = resolved.root
     if (needsFirstRunChoice(root)) root = await firstRunChooseDir(root)
     const ensured = layout.ensureLayout(root, app.getVersion(), app.getAppPath())
     if (ensured.status === 'downgrade') return ensured

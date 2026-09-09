@@ -9,6 +9,9 @@ export type AppData = Db
 export type LoadResult =
   | { status: 'ok'; data: AppData }
   | { status: 'downgrade'; dataVersion: number; supportedVersion: number }
+  // RF-Data 加固（2026-09-09）：config 损坏/数据目录丢失不再静默回退默认根（防加载残留旧数据）
+  | { status: 'config-error'; file: string; message: string }
+  | { status: 'root-missing'; root: string; message: string }
 
 export interface DataInfo {
   dataDir: string

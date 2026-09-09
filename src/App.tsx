@@ -120,6 +120,11 @@ export default function App() {
         setLoadError(`当前数据版本（v${r.dataVersion}）高于本应用支持的版本（v${r.supportedVersion}），为防数据损坏未加载。请升级应用后重新打开，数据未做任何修改。`)
         return
       }
+      // RF-Data 加固：config 损坏 / 自定义数据目录丢失 → 提示页阻断（绝不静默回退默认根读残留）
+      if (r.status === 'config-error' || r.status === 'root-missing') {
+        setLoadError(r.message)
+        return
+      }
       setDb(r.data)
       setLoaded(true)
     })
