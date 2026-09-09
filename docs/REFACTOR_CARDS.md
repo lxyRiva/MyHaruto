@@ -391,7 +391,11 @@ AI 模板五件在仓库 data/ai/ 下且 git 已跟踪（`git ls-files data/`）
 
 ---
 
-## 十一、RF-P6b：死代码清扫 + 重构收官
+## 十一、RF-P6b（现称 RF-Clean）：死代码清扫 + 重构收官
+
+> **v1.27 扩容清单（项目树对齐，2026-09-09 用户批；M6 口子类型已预落 b1d92a1 从本清单除名）**：
+> ①App.tsx 迁 src/app/App.tsx（main.tsx import 改道）②public/assets/days → public/builtin-art/days 更名+ImportantDays 引用改道（builtin-art/town/{characters,rooms} 目录同步建）③town 组件命名对齐目标树（RoomScene/CompanionPanel[陪伴壳内嵌 TaskDetailPanel]/useCharacterState/useCompanion）④features/ai/ 四子域骨架随 M5/M6 建（本卡只登记不建空目录）⑤.gitignore 防御条+changeDataDir 校验（自定义 dataDir 指向仓库内时拒绝）⑥PROJECT_SPEC/DEVLOG 归档 docs/archive ✅ 已提前落 3f3c58d。
+> 用户手测：全视图回归（重点 ImportantDays 插画载入）+AI 名等设置项。
 
 ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEHOLDER_PAGE 两项移除；全库无引用导出清理（逐项列出经审查确认才删）。**审查登记（v1.5）**：过度导出 4 处——taskMenu.tsx 的 PRIO_META/prioDot/withCheck（仅文件内使用）与 SubTagModal.tsx 的 EMOJI_PRESETS；usePomodoro.ts:21 内联 import 类型改顶部 import type。**审查登记（v1.12，P3b）**：L2Sidebar 死解构 tagMap/todayStr/mainTasks 清除；renderH1/renderSubTagRow 函数超 50 行拆分；L2Sidebar todaySessions 类型偏松收紧。**可选项**：Modal/ConfirmModal 壳统一（审查评估真实重复后决定，避免为抽而抽）。回滚：reset 到 P6a。
 
@@ -766,6 +770,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.27 | **项目树对齐（用户 AI 模块设计线同步）**：M6 口子类型预落（b1d92a1）；AI 基线四文档（MEMORY_DESIGN/AI_COMMENT_DIALOG/CHARACTER_ANIMATION 3D 骨架/DATA_LAYOUT，3f3c58d）；PROJECT_SPEC/DEVLOG 归档 docs/archive；RF-Clean 扩容清单（App 迁 app/、builtin-art 更名、town 组件命名、.gitignore 防御、features/ai 登记）；STRUCTURE v2 重写；B1/清理域隔离并行（B1=features/tasks、清理=docs/public/根，禁 add -A） |
 | v1.26 | **序列再调**（用户定稿）：RF-B1→**RF-Polish 旧池**→RF-Clean→RF-Town-MVP→**RF-Moments**→RF-Release；**RF-Town-MVP 技术方案 v2=3D**（three+@react-three/fiber 依赖批准入册[§4 例外]、glb/gltf、state→动画片段、用户 assets/>public 资产优先级、CharacterStage=3D Canvas、2D 立绘作废仅占位宣传；⚠️ haruto.glb 缺口=动画师制作，到位前占位几何推进）；**DEV_RULES 新增 §11 工作区边界**（双目录固定/外部先报告征得同意/可联网） |
 | v1.25 | **RF-Data/RF-Polish 深度核查七项通过**（剥离干净 c8b0208/MainArea 误报定性/手测终态代码零差异/verify:data 32-0）；**RF-B1 提前**（子任务右栏编辑，Bug 池 B1）；**RF-Town-MVP 细案入册**（用户 2026-09-08 要求流转丢失致规划层漏登，已承认——一个房间/一个角色/陪伴交互；取证：立绘 4 态已有、data/town 未建本卡自建、房间背景缺默认 CSS 占位）；**序列定稿：RF-B1→RF-Moments→RF-Clean→RF-Town-MVP→RF-Polish旧池→RF-Release→v1.0.0** |
 | v1.24 | P3c 验收提交 **6d9567b**（17 文件 +192/−136，M1 修补 sanitize 落地，测试+审查+手测全过）；**测试+审查合并单会话**（高风险档一个会话先测后审出一份合并报告）；**双线第二波铺开**：线 A=RF-Data 三 commit（开发 1）、线 B=RF-Polish-P1→P6（开发 2 复工） |
