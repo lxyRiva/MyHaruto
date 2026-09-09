@@ -4,7 +4,7 @@
 MyHaruto（Electron+React18+TS strict+Tailwind）重构线进行中。
 HEAD=cbc8c3d（RF-Data+RF-Polish 六笔已推送）｜工作区干净｜tag：v0.1.0=refactor-start=7b4978f、fix3c-pre=88907d3
 
-## 重构进度（总集 docs/REFACTOR_CARDS.md v1.23）
+## 重构进度（总集 docs/REFACTOR_CARDS.md v1.25）
 ✅ P1/P2a/P2b/P3a/P3b/P3c/Fix1/2/3/3a/3c(1+2)/RF-Data(1-3)/RF-Polish-P1~P6 ｜ ⏳ 单线待派：RF-Moments（细案待批）
 → RF-Moments/RF-Clean/RF-Polish旧池/RF-Release/v1.0.0
 （命名映射：P6b=RF-Clean，Fix4=RF-Polish，P7=RF-Release；Fix4-P1~P6=RF-Polish 线 B 并行中）
@@ -32,7 +32,7 @@ HEAD=cbc8c3d（RF-Data+RF-Polish 六笔已推送）｜工作区干净｜tag：v0
 tsc --noEmit 零错误 → npm run build → npm run dev 自测
 
 ## 下一步
-用户批 RF-Moments 细案 v1（总集「十、」节）→ 单线派发 → RF-Clean → RF-Polish 旧池 → RF-Release → v1.0.0
+派 RF-B1（低风险档：开发→手测→commit）；RF-Moments 细案待用户批；RF-Town-MVP 房间背景资产缺口（默认 CSS 占位）
 ## 节俭令（2026-09-09）
 报告四项制（清单/diff摘要3-5行/✅❌/遗留）不贴代码；测试三件套；审查仅搬移迁移类；非阻塞 bug 进池
 
