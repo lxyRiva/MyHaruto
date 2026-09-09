@@ -23,17 +23,23 @@ MyHaruto/
 │   └── HANDBOOK.md          # 新 Agent 上手六步+协作规范
 │
 ├── electron/                # Electron 主进程（Node 侧）
-│   ├── main.js              # 窗口创建 + db.json 读写 IPC + 数据自愈（断环/补字段）
-│   ├── preload.js           # contextBridge 暴露 window.myharuto.{getDb,saveDb}
+│   ├── main.js              # 窗口创建 + IPC 委托（数据逻辑已全部移出）
+│   ├── preload.js           # contextBridge 暴露 window.myharuto（db/data 五通道）
+│   ├── data/store.js        # ★ 数据层核心：loadDb/saveDb（原子写）+config.json 数据根+自定义位置+降级保护
+│   ├── data/layout.js       # 多文件布局：8 域读写+迁移三分支+删除留痕 logs/changes.jsonl+AI 模板播种
 │   └── wait-dev.js          # 开发模式：轮询5173就绪后拉起 electron（替代 wait-on）
 │
 ├── public/assets/days/      # 重要日插画 PNG ×9（birthday/festival/custom 各3张）
+├── data/ai/                 # AI 数据域仓库模板（空数组/默认人设，用户数据在 %APPDATA%，永不上传）
+├── scripts/verify-migration.mjs  # 数据迁移校验（npm run verify:data）
 │
 └── src/                     # 界面代码（React 侧，features 分层，RF-P1~P3b）
     ├── main.tsx             # React 挂载入口
     ├── App.tsx              # ★ 主帅文件：数据 hooks 编排 + nav API（路由四件套成套同步）
     │                        #   + 布局组合（L1/L2/MainArea/右栏/弹窗接线）
-    ├── global.d.ts          # window.myharuto 类型
+    ├── global.d.ts          # window.myharuto 类型（db/data 五通道）
+    ├── data/repository.ts   # ★ 渲染端唯一数据入口 loadAll/persist（StorageDriver 接口）
+    ├── data/types.ts        # 数据层类型（DataInfo 等）
     ├── solarlunar.d.ts      # 农历库类型补丁
     ├── styles.css           # Tailwind 指令+全局样式+fadeSlideIn 动效（视觉签名）
     │

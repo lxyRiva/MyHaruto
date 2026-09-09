@@ -38,10 +38,10 @@ npm run build      # 打包界面到 dist/（不打包exe）
 
 ## 3. 数据架构
 
-### 3.1 存储位置
-`%APPDATA%/MyHaruto/data/db.json`（C:\Users\<用户>\AppData\Roaming\MyHaruto\data\db.json）——单 JSON 文件，主进程 fs 读写，preload 桥接 `window.myharuto.getDb()/saveDb()`。图片等静态资源在 public/assets/。
+### 3.1 存储位置（RF-Data-2 起多文件态）
+`%APPDATA%/MyHaruto/data/`（默认；可通过 %APPDATA%/MyHaruto/config.json 的 dataDir 更改）——多文件布局：manifest.json + 8 域文件 + settings.json + logs/（changes.jsonl 删除留痕）+ backups/（启动滚动 7 份）。主进程 electron/data/store.js+layout.js 读写（原子写 .tmp→rename），preload 桥接 `window.myharuto`（db:get/db:save/data:open-dir/data:info/data:change-dir）。仓库内 data/ 仅 AI 空模板（隔离铁律见 §3.4）。db.json 迁移后改名 .migrated.bak 让位。
 
-### 3.2 数据模型（src/types.ts，与 db.json 一一对应）
+### 3.2 数据模型（src/shared/types.ts，与各域文件一一对应；域拆分见 electron/data/layout.js）
 ```
 Task{ id,title,description,dueDate('YYYY-MM-DD'|null),done,createdAt,
       tagId, parentTaskId(子→父，无限嵌套), priority('none'|low|mid|high),
