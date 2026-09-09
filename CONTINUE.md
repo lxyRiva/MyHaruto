@@ -22,7 +22,7 @@
 
 ## 里程碑速查（详见 docs/PRD.md §5）
 
-四层结构（H1清单→H2标签→Section分组→任务）✅ 全部视图 ✅ → 收尾轮（右键统一✅【P2b 落地】/L1排序⏳【并入 RF-P3c 进行中】）→ **重构线进行中：P1/P2a/Fix1-3/P2b/P3a/P3b ✅（60b0377→66480d2，App 316 行），RF-P3c（日期收口+useLocalStorage+L1排序，P3 收官段）待开工**（详见 docs/REFACTOR_CARDS.md）→ M5 AI聊天+视觉+人物主页（需智谱API Key）→ M6 AI定时行为 → V2 书影/旅行/看板拖拽/记忆衰减 → V3 小镇/Live2D/移动端
+四层结构（H1清单→H2标签→Section分组→任务）✅ 全部视图 ✅ → 收尾轮全清 ✅ → **重构线：P1~P3c+Fix1-3+Fix3a/3c 全闭环（→6d9567b 已推送），双线第二波进行中：线 A=RF-Data 三 commit（数据层合并，开发 1）、线 B=RF-Polish-P1→P6（视图批量，开发 2）；后续 RF-Moments→RF-Clean→RF-Polish旧池→RF-Release→v1.0.0**（详见 docs/REFACTOR_CARDS.md 与 docs/AGENT_STATE.md）→ M5 AI聊天+视觉+人物主页（需智谱API Key）→ M6 AI定时行为 → V2 书影/旅行/看板拖拽/记忆衰减 → V3 小镇/Live2D/移动端
 
 ## 团队会话边界（2026-09-06 起强制，全文见 docs/DEV_RULES.md §8）
 
@@ -30,7 +30,7 @@
 - 测试会话只跑验收清单、出测试报告，禁止修改代码；问题回报，开发会话修复。
 - 审查会话开工第一条消息显式声明「切换为审查模式」，全程只读。
 - 规划会话只出卡不改码。各角色经 CONTINUE.md 接力，每卡收尾更新为下一卡状态。
-- 当前阶段：**RF-Fix3c 全卡闭环（Fix3c-1=8ca48e7、Fix3c-2=0564917，六组分叉收口+三手测 Bug+Bug5+Escape 补齐全落）；产品双视图定位已写入 PRD §2.1/DEV_RULES §10/README；RF-P3c（日期收口+useLocalStorage+L1 排序，P3 收官段）复位待派发；bug 池 10 项+N4 可选项在 RF-Fix4（P6b 后）；RF-P7 设置中心（Fix4 后，v1.0.0 收官随其后）**。后续循环以 docs/REFACTOR_CARDS.md 为准。
+- 当前阶段：**P3 全收官（P3c=6d9567b 已推送，测试+审查+手测全过）；双线第二波进行中：线 A=RF-Data（开发 1 一次跑三 commit）、线 B=RF-Polish-P1→P6（开发 2 复工）；测试+审查合并单会话；后续 RF-Moments→RF-Clean→RF-Polish旧池→RF-Release→v1.0.0 收官**。后续循环以 docs/REFACTOR_CARDS.md 为准。
 
 ## 我自己要会的命令（全部）
 
