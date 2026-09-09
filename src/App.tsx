@@ -13,6 +13,7 @@ import { usePomodoro } from './features/pomodoro/hooks/usePomodoro'
 import { useHabits } from './features/habits/hooks/useHabits'
 import { useImportantDays } from './features/important-days/hooks/useImportantDays'
 import { repository } from './data/repository'
+import type { DataInfo } from './data/types'
 import { DEFAULT_AI_NAME } from './shared/constants'
 
 export type PageKey =
@@ -22,6 +23,10 @@ export type PageKey =
 export default function App() {
   const [db, setDb] = useState<Db>({ tasks: [], tags: [], subTags: [], sections: [], focusSessions: [], habits: [], habitRecords: [], importantDays: [], periodRecords: [], sleepRecords: [], settings: { theme: 'light', harutoMetDate: '', currentCharacterId: 'haruto', skinId: 'default', aiName: DEFAULT_AI_NAME } })
   const [loaded, setLoaded] = useState(false)
+  // 降级保护（RF-Data-2）：数据版本高于应用支持时拒绝加载，只提示升级
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // 数据位置信息（设置弹窗「数据位置」区块显示；运行期不变，挂载拉一次）
+  const [dataInfo, setDataInfo] = useState<DataInfo | null>(null)
   const [page, setPage] = useState<PageKey>('today')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // L2 清单树选中项
@@ -110,10 +115,15 @@ export default function App() {
   }
 
   useEffect(() => {
-    repository.loadAll().then((d) => {
-      setDb(d)
+    repository.loadAll().then((r) => {
+      if (r.status === 'downgrade') {
+        setLoadError(`当前数据版本（v${r.dataVersion}）高于本应用支持的版本（v${r.supportedVersion}），为防数据损坏未加载。请升级应用后重新打开，数据未做任何修改。`)
+        return
+      }
+      setDb(r.data)
       setLoaded(true)
     })
+    repository.getDataInfo().then(setDataInfo).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -202,6 +212,18 @@ export default function App() {
     onPomodoro: (t: Task) => setPomoTarget(t),
     onDeleteTaskTree: deleteTaskTree,
     onUpdateTask: updateTask,
+  }
+
+  // 降级保护：数据比应用新时只显示提示页，不渲染任何功能视图
+  if (loadError) {
+    return (
+      <div className="h-full grid place-items-center bg-white dark:bg-neutral-900">
+        <div className="max-w-md text-center p-6">
+          <div className="text-sm font-medium mb-2">数据无法加载</div>
+          <div className="text-xs text-neutral-500 leading-relaxed">{loadError}</div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -299,7 +321,9 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           aiName={aiName}
           onSave={(v) => setDb((d) => ({ ...d, settings: { ...d.settings, aiName: v } }))}
+          dataDir={dataInfo?.dataDir ?? ''}
           onOpenDataDir={() => repository.openDataDir()}
+          onChangeDataDir={() => repository.changeDataDir()}
         />
       )}
 

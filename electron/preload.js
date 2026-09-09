@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('myharuto', {
   getDb: () => ipcRenderer.invoke('db:get'),
-  saveDb: (db) => ipcRenderer.invoke('db:save', db),
+  saveDb: (payload) => ipcRenderer.invoke('db:save', payload),
   openDataDir: () => ipcRenderer.invoke('data:open-dir'),
+  getDataInfo: () => ipcRenderer.invoke('data:info'),
+  changeDataDir: () => ipcRenderer.invoke('data:change-dir'),
 })

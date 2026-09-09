@@ -1,138 +1,163 @@
-// 数据仓库主进程端（RF-Data-1 自 main.js 整体迁入）：
-// 数据根解析（%APPDATA%/MyHaruto/config.json { dataDir }，缺省 userData/data——自定义位置奠基）
-// + 单库读写（原子写 .tmp→rename）+ 启动滚动备份 7 份 + IPC 注册
-// RF-Data-2 扩展：多文件布局/迁移/版本管理/自定义位置
-const { app, ipcMain, shell } = require('electron')
+// 数据仓库主进程端（RF-Data-1/2）：electron 外壳——数据根解析（config.json { dataDir }）、
+// 首次选位弹窗、更改位置（复制→校验→改 config→重启生效，失败回滚）、IPC 注册、启动滚动备份。
+// 布局/迁移/自愈/域读写全在 electron/data/layout.js（纯 Node，verify:data 直测）
+const { app, ipcMain, shell, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const layout = require('./layout')
+
+// ---------- config.json：自定义数据位置的唯一事实源 ----------
+function configFile() {
+  return path.join(app.getPath('userData'), 'config.json')
+}
 
 function readConfig() {
   try {
-    const file = path.join(app.getPath('userData'), 'config.json')
-    const cfg = JSON.parse(fs.readFileSync(file, 'utf-8'))
+    const cfg = JSON.parse(fs.readFileSync(configFile(), 'utf-8'))
     return cfg && typeof cfg === 'object' ? cfg : {}
   } catch {
     return {}
   }
 }
 
-// 数据根：config.json 指定 dataDir 优先，缺省 userData/data（与 RF-Data-1 前的旧路径一致，老用户无感）
+function writeConfig(cfg) {
+  layout.writeFileAtomic(configFile(), JSON.stringify(cfg, null, 2))
+}
+
+// 数据根：config.dataDir 优先；缺省 userData/data（与 RF-Data-1 前旧路径一致，老用户无感）
 function dataRoot() {
   const cfg = readConfig()
   if (cfg.dataDir && typeof cfg.dataDir === 'string' && cfg.dataDir.trim()) return cfg.dataDir.trim()
   return path.join(app.getPath('userData'), 'data')
 }
 
-function dbFile() {
-  return path.join(dataRoot(), 'db.json')
-}
-
-function defaultDb() {
-  return {
-    tasks: [],
-    tags: [
-      { id: 'okr', name: '年度OKR', color: '#d4a017', isSpecial: true },
-      { id: 'daily', name: '日常', color: '#3d7ea6', isSpecial: false },
-    ],
-    subTags: [],
-    sections: [],
-    focusSessions: [],
-    habits: [],
-    habitRecords: [],
-    importantDays: [],
-    periodRecords: [],
-    sleepRecords: [],
-    settings: {
-      theme: 'light',
-      harutoMetDate: new Date().toISOString().slice(0, 10),
-      currentCharacterId: 'haruto',
-      skinId: 'default',
-      aiName: 'Haruto', // 须与 src/shared/constants.ts DEFAULT_AI_NAME 保持一致（CJS 无法 require TS）
-    },
-  }
-}
+// ---------- 数据源模式：multi = 多文件域布局；legacy = 迁移失败回退旧单文件 ----------
+let dataMode = 'multi'
 
 function loadDb() {
-  try {
-    const db = JSON.parse(fs.readFileSync(dbFile(), 'utf-8'))
-    // 旧版本数据兼容：补齐缺失的字段
-    const defaults = defaultDb()
-    for (const key of Object.keys(defaults)) {
-      if (db[key] === undefined) db[key] = defaults[key]
-    }
-    // 四层结构自愈：旧数据补齐 H2标签/看板分组/任务新字段/角色设置
-    if (!Array.isArray(db.subTags)) db.subTags = []
-    if (!Array.isArray(db.sections)) db.sections = []
-    if (!db.settings || typeof db.settings !== 'object') db.settings = defaults.settings
-    if (!db.settings.harutoMetDate) db.settings.harutoMetDate = new Date().toISOString().slice(0, 10)
-    if (!db.settings.currentCharacterId) db.settings.currentCharacterId = 'haruto'
-    if (!db.settings.skinId) db.settings.skinId = 'default'
-    if (!db.settings.aiName) db.settings.aiName = 'Haruto' // 同上：须与 constants.DEFAULT_AI_NAME 一致
-    for (const t of db.tasks) {
-      if (!Array.isArray(t.checklistItems)) t.checklistItems = []
-      if (!Array.isArray(t.taskComments)) t.taskComments = []
-      if (t.sectionId === undefined) t.sectionId = null
-    }
-    // 数据自愈：断开父子环 / 悬空父引用（历史测试数据可能成环导致界面白屏）
-    const ids = new Set(db.tasks.map((t) => t.id))
-    for (const t of db.tasks) {
-      if (t.parentTaskId && (!ids.has(t.parentTaskId) || t.parentTaskId === t.id)) {
-        t.parentTaskId = null
-      }
-    }
-    // 逐个沿链走，超过任务总数仍未到顶 = 成环，断开该链
-    const n = db.tasks.length
-    for (const t of db.tasks) {
-      let cur = t, steps = 0
-      while (cur && cur.parentTaskId && steps <= n) {
-        cur = db.tasks.find((x) => x.id === cur.parentTaskId)
-        steps++
-      }
-      if (steps > n) t.parentTaskId = null
-    }
-    return db
-  } catch {
-    return defaultDb()
+  if (dataMode === 'legacy') {
+    // 迁移失败静默回退：照旧读写根下 db.json（下次启动重试迁移）
+    return layout.selfHealDb(layout.readJsonSafe(path.join(dataRoot(), layout.LEGACY_DB_FILE)) || layout.defaultDb())
   }
+  return layout.readAllDomains(dataRoot())
 }
 
-// 原子写：先写同目录 .tmp 再 rename，避免写一半崩溃留下截断 JSON
-function writeFileAtomic(file, content) {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  const tmp = file + '.tmp'
-  fs.writeFileSync(tmp, content)
-  fs.renameSync(tmp, file)
+function saveDb(db, domains, deletions) {
+  if (dataMode === 'legacy') {
+    layout.writeFileAtomic(path.join(dataRoot(), layout.LEGACY_DB_FILE), JSON.stringify(db, null, 2))
+    return
+  }
+  layout.writeDomains(dataRoot(), db, domains === undefined ? null : domains)
+  if (deletions && deletions.length) layout.appendDeletionLog(dataRoot(), deletions)
 }
 
-function saveDb(db) {
-  writeFileAtomic(dbFile(), JSON.stringify(db, null, 2))
-}
-
-// 启动备份：把当前 db.json 快照拷进 backups/，按时间戳命名，滚动保留最新 7 份
+// ---------- 启动滚动备份：全库快照单文件，滚动保留最新 7 份 ----------
 function startupBackup() {
-  const src = dbFile()
-  if (!fs.existsSync(src)) return
   try {
-    const dir = path.join(dataRoot(), 'backups')
+    const root = dataRoot()
+    let snapshot
+    if (dataMode === 'legacy') {
+      snapshot = { when: new Date().toISOString(), legacyDb: layout.readJsonSafe(path.join(root, layout.LEGACY_DB_FILE)) }
+    } else {
+      snapshot = {
+        when: new Date().toISOString(),
+        manifest: layout.readManifest(root),
+        ...layout.readAllDomains(root),
+      }
+    }
+    const dir = path.join(root, 'backups')
     fs.mkdirSync(dir, { recursive: true })
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    fs.copyFileSync(src, path.join(dir, `db-${stamp}.json`))
-    const keep = fs.readdirSync(dir).filter((f) => /^db-.*\.json$/.test(f)).sort()
+    layout.writeFileAtomic(path.join(dir, `snapshot-${stamp}.json`), JSON.stringify(snapshot, null, 2))
+    const keep = fs.readdirSync(dir).filter((f) => /^snapshot-.*\.json$/.test(f)).sort()
     while (keep.length > 7) fs.unlinkSync(path.join(dir, keep.shift()))
   } catch {
     // 备份失败不阻断启动（数据文件本身无损）
   }
 }
 
-// IPC 注册 + 启动备份；main.js 只调这一个入口（窗口逻辑留 main.js）
+// ---------- 首次选位（全新安装且未定位置时弹一次；取消=默认位置） ----------
+function needsFirstRunChoice(root) {
+  const cfg = readConfig()
+  if (cfg.dataDir) return false
+  return !fs.existsSync(path.join(root, 'manifest.json')) && !fs.existsSync(path.join(root, layout.LEGACY_DB_FILE))
+}
+
+async function firstRunChooseDir(defaultRoot) {
+  const r = await dialog.showOpenDialog({
+    title: '选择 MyHaruto 数据保存位置',
+    message: '选择存放 MyHaruto 数据的文件夹（将在其下创建 MyHaruto 子目录）；取消则使用系统默认位置。',
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (r.canceled || !r.filePaths[0]) return defaultRoot
+  const chosen = path.join(r.filePaths[0], 'MyHaruto')
+  writeConfig({ ...readConfig(), dataDir: chosen })
+  return chosen
+}
+
+// ---------- 更改位置：复制→校验→改 config（重启生效）；失败清理副本、config 不动 ----------
+function verifyRootIntegrity(root) {
+  if (!layout.readManifest(root)) return false
+  if (layout.readJsonSafe(path.join(root, layout.SETTINGS_FILE)) === undefined) return false
+  for (const d of layout.DOMAINS) {
+    if (layout.readJsonSafe(path.join(root, d.name, `${d.name}.json`)) === undefined) return false
+  }
+  return true
+}
+
+async function changeDataDir() {
+  const current = dataRoot()
+  const r = await dialog.showOpenDialog({
+    title: '更改数据位置',
+    message: '选择新位置（将把全部数据复制到其下 MyHaruto 子目录，校验通过后重启生效；失败自动回滚）。',
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true }
+  const target = path.join(r.filePaths[0], 'MyHaruto')
+  if (fs.existsSync(path.join(target, 'manifest.json'))) {
+    return { ok: false, error: '目标位置已存在 MyHaruto 数据，为防覆盖已取消' }
+  }
+  try {
+    fs.cpSync(current, target, {
+      recursive: true,
+      filter: (src) => !src.endsWith('.tmp'),
+    })
+    if (!verifyRootIntegrity(target)) throw new Error('copy verification failed')
+    writeConfig({ ...readConfig(), dataDir: target })
+    return { ok: true, dataDir: target, requiresRestart: true }
+  } catch {
+    try {
+      fs.rmSync(target, { recursive: true, force: true })
+    } catch {
+      // 清理失败不掩盖回滚结果：config 未写，原位置数据未动
+    }
+    return { ok: false, error: '复制或校验失败，已回滚：数据位置未变更，原数据原地未动' }
+  }
+}
+
+// ---------- IPC 注册 + 启动序列；main.js 只调这一个入口 ----------
 function initStore() {
-  ipcMain.handle('db:get', () => loadDb())
-  ipcMain.handle('db:save', (_e, db) => {
-    saveDb(db)
+  ipcMain.handle('db:get', async () => {
+    // P0 修复（RF-Data-2 验证实锤）：必须接收选位结果——选了新位置时 ensureLayout/
+    // startupBackup/loadDb 全链都要用新 root；取消时 firstRunChooseDir 原样返回传入 root
+    let root = dataRoot()
+    if (needsFirstRunChoice(root)) root = await firstRunChooseDir(root)
+    const ensured = layout.ensureLayout(root, app.getVersion(), app.getAppPath())
+    if (ensured.status === 'downgrade') return ensured
+    dataMode = ensured.legacyFallback ? 'legacy' : 'multi'
+    startupBackup()
+    return { status: 'ok', data: loadDb() }
+  })
+  ipcMain.handle('db:save', (_e, payload) => {
+    saveDb(payload.data, payload.domains, payload.deletions)
     return true
   })
   ipcMain.handle('data:open-dir', () => shell.openPath(dataRoot()))
-  startupBackup()
+  ipcMain.handle('data:info', () => {
+    const cfg = readConfig()
+    return { dataDir: dataRoot(), isDefault: !cfg.dataDir }
+  })
+  ipcMain.handle('data:change-dir', () => changeDataDir())
 }
 
-module.exports = { initStore, dataRoot, defaultDb, loadDb, saveDb, writeFileAtomic, startupBackup }
+module.exports = { initStore, dataRoot, loadDb, saveDb, startupBackup, changeDataDir }

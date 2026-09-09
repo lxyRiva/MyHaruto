@@ -8,6 +8,7 @@
     "dev:vite": "vite",
     "dev:electron": "node electron/wait-dev.js",
     "build": "vite build",
+    "verify:data": "node scripts/verify-migration.mjs",
     "start": "npm run build && electron ."
   },
   "dependencies": {
