@@ -91,6 +91,11 @@ function startupBackup() {
     fs.mkdirSync(dir, { recursive: true })
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     layout.writeFileAtomic(path.join(dir, `snapshot-${stamp}.json`), JSON.stringify(snapshot, null, 2))
+    // config.json 快照（RF-Data 加固）：config 损坏时阻断页可指引从此恢复，避免数据位置失联
+    const cfgFile = configFile()
+    if (fs.existsSync(cfgFile)) {
+      layout.writeFileAtomic(path.join(dir, 'config-last.json'), fs.readFileSync(cfgFile, 'utf-8'))
+    }
     const keep = fs.readdirSync(dir).filter((f) => /^snapshot-.*\.json$/.test(f)).sort()
     while (keep.length > 7) fs.unlinkSync(path.join(dir, keep.shift()))
   } catch {
@@ -99,10 +104,11 @@ function startupBackup() {
 }
 
 // ---------- 首次选位（全新安装且未定位置时弹一次；取消=默认位置） ----------
-function needsFirstRunChoice(root) {
-  const cfg = readConfig()
-  if (cfg.dataDir) return false
-  return !fs.existsSync(path.join(root, 'manifest.json')) && !fs.existsSync(path.join(root, layout.LEGACY_DB_FILE))
+// RF-Data 加固（2026-09-09）：config.json 不存在 → 一律弹选位（取消=默认位置）。
+// 旧判定「默认根无数据才弹」在默认根残留旧副本的环境下会静默加载残留（数据穿越）；
+// 新语义下弹窗是知情选择：用户选回自定义位置即恢复连续性，取消则明确接受默认位置。
+function needsFirstRunChoice() {
+  return !fs.existsSync(configFile())
 }
 
 async function firstRunChooseDir(defaultRoot) {
@@ -181,7 +187,7 @@ function initStore() {
       return {
         status: 'config-error',
         file: resolved.file,
-        message: `数据位置配置文件损坏（${resolved.file}）。为防加载到旧数据副本，应用未加载数据。请修复或删除该配置文件后重启（删除后将使用默认位置）。`,
+        message: `数据位置配置文件损坏（${resolved.file}）。为防加载到旧数据副本，应用未加载数据。恢复方式：用数据目录 backups/config-last.json 覆盖该文件，或删除该文件后重新选择位置。`,
       }
     }
     if (resolved.status === 'root-missing') {
@@ -192,7 +198,7 @@ function initStore() {
       }
     }
     let root = resolved.root
-    if (needsFirstRunChoice(root)) root = await firstRunChooseDir(root)
+    if (needsFirstRunChoice()) root = await firstRunChooseDir(root)
     const ensured = layout.ensureLayout(root, app.getVersion(), app.getAppPath())
     if (ensured.status === 'downgrade') return ensured
     dataMode = ensured.legacyFallback ? 'legacy' : 'multi'

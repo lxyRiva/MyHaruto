@@ -4,6 +4,11 @@ const { app, BrowserWindow } = require('electron')
 const path = require('path')
 const { initStore } = require('./data/store')
 
+// 数据连续性锚点（RF-Data 加固 2026-09-09）：userData 恒定 %APPDATA%/MyHaruto，
+// 不随 package.json name/productName 变化（打包改名/升级改名都不再影响 config.json 与数据定位）。
+// 必须在 app.ready 之前执行。
+app.setPath('userData', path.join(app.getPath('appData'), 'MyHaruto'))
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
