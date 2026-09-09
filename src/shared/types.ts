@@ -117,6 +117,64 @@ export interface MomentEntry {
   createdAt: string
 }
 
+// ===== AI 记忆库口子类型（2026-09-09 预落；M6 实现，语义随 docs/MEMORY_DESIGN.md 细化） =====
+export type ChatRole = 'user' | 'haruto'
+export type ChatSource = 'chat' | 'task' | 'importantDay' | 'period' | 'town'
+
+export interface ChatMessage {
+  id: string
+  role: ChatRole
+  content: string
+  imagePath?: string
+  sourceType: ChatSource
+  createdAt: string
+}
+
+// 记忆碎片（Sagas 滚动摘要的原料；对齐 PROJECT_SPEC memories 表）
+export interface MemoryFragment {
+  id: string
+  category: string
+  content: string
+  sourceType: ChatSource
+  sourceId?: string // 来源 ChatMessage.id
+  emotionWeight?: number
+  activationScore?: number
+  lastAccessedAt?: string
+  createdAt: string
+}
+
+// 实体画像（entityTag 硬关联的聚合视图）
+export interface EntityProfile {
+  id: string
+  entity: string
+  kind: 'person' | 'thing' | 'concept'
+  summary: string
+  fragmentIds: string[]
+  updatedAt: string
+}
+
+// 用户长期模型（对用户的稳定认知，滚动更新）
+export interface UserModel {
+  updatedAt: string
+  traits: string[]
+  preferences: string[]
+  notes: string[]
+}
+
+// Haruto 内心想法 / 对实体的印象（M6 口子，结构随实现细化）
+export interface Thought {
+  id: string
+  content: string
+  createdAt: string
+}
+
+export interface Impression {
+  id: string
+  targetEntity: string
+  content: string
+  createdAt: string
+}
+
 export interface Db {
   tasks: Task[]
   tags: Tag[]
