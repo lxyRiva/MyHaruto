@@ -4,8 +4,10 @@
 MyHaruto（Electron+React18+TS strict+Tailwind）重构线进行中。
 HEAD=af5b552（v1.20 docs）｜工作区=P3c 修补未提交｜tag：v0.1.0=refactor-start=7b4978f、fix3c-pre=88907d3｜未 push 笔数 4
 
-## 重构进度（总集 docs/REFACTOR_CARDS.md v1.21）
-✅ P1/P2a/P2b/P3a/P3b/Fix1/2/3/3a/3c(1+2) ｜ ⏳ P3c 修补中 → 双线第二波 → P6a/P6b/Fix4旧池/P7/v1.0.0
+## 重构进度（总集 docs/REFACTOR_CARDS.md v1.23）
+✅ P1/P2a/P2b/P3a/P3b/Fix1/2/3/3a/3c(1+2) ｜ ⏳ P3c 修补中 → 双线第二波
+→ RF-Data（P4+P5+P6a数据 合并卡，3 commit）→ RF-Moments/RF-Clean/RF-Polish旧池/RF-Release/v1.0.0
+（命名映射：P6b=RF-Clean，Fix4=RF-Polish，P7=RF-Release；Fix4-P1~P6=RF-Polish 线 B 并行中）
 
 ## 当前会话分工（双线并行期）
 - 规划（本会话）：出卡/串行 commit/盯门；每阶段收尾更新本文件
@@ -28,5 +30,7 @@ HEAD=af5b552（v1.20 docs）｜工作区=P3c 修补未提交｜tag：v0.1.0=refa
 tsc --noEmit 零错误 → npm run build → npm run dev 自测
 
 ## 下一步
-P3c 修补交付→手测→commit→双线铺开（线A开工包+线B原包即时生效）
-P6a 细案规格 v1 已在总集「十、RF-P6a」，待用户批
+P3c 修补交付→手测→commit→双线铺开（线A=RF-Data 全卡；线B=RF-Polish-P1→P6 原包生效）
+RF-Data 合并范围已出待用户确认；RF-Moments 细案 v1 在总集「十、」节待批
+## 节俭令（2026-09-09）
+报告四项制（清单/diff摘要3-5行/✅❌/遗留）不贴代码；测试三件套；审查仅搬移迁移类；非阻塞 bug 进池

@@ -6,10 +6,16 @@
 
 ## 0. 使用说明（各会话接力方式）
 
-- 开发/测试/审查各开独立会话（DEV_RULES §8）。会话开工第一条消息模板：
-  `读 docs/DEV_RULES.md 与 docs/REFACTOR_CARDS.md 的 RF-Px 卡，按卡执行。`
+- 开发/测试/审查各开独立会话（DEV_RULES §8）。**新会话第一句话**：
+  `读 docs/AGENT_STATE.md，然后告诉我当前状态和你该干什么。`（免翻全部文档；规划层每阶段收尾更新，≤50 行）
 - 测试会话只跑验收出报告不修码；审查会话开工先声明「切换为审查模式」。
-- 每卡走完「开工锁→开发→测试→审查→用户手测→授权 commit→文档同步」才开下一卡。
+- **报告精简（2026-09-09 起，token 节俭）**：交付/测试/审查报告**不附代码全文与 grep 输出全文**，
+  只报四项——改动文件清单 / 3-5 行 diff 摘要 / 验收项 ✅❌ / 遗留问题；代码变更一律 git diff 看。
+- **测试轻量化**：只跑 ①git diff --stat 范围确认 ②卡内新增验收项 ③2-3 个回归抽查项
+  （RF-Data 例外：迁移数据完整性验证=verify:data+迁移路径手测，属验收项本身）。
+- **审查政策**：只在搬移/迁移类卡启动（P3a/P3b 已过；RF-Data 例外=commit 2 迁移逻辑专项一次，
+  规划层裁定为数据安全例外）；其余卡零审查。
+- **bug 池纪律**：非阻塞 bug 一律进 RF-Polish 池，不插卡；只有应用完全不可用才插阻塞卡。
 
 ## 一、执行总纲（全程有效，各卡不再重复）
 
@@ -59,12 +65,11 @@ P4/P5 开发一次跑完全卡再交付，不逐步对话确认；测试审查�
 | RF-P3b | 布局抽取 L1/L2/MainArea | 1 | 中低 | P3a 提交 |
 | RF-Fix3c | 任务系统视图一致性统一（两段 commit，**待用户确认范围放行**） | 2 | 中高 | P3b 提交（66480d2） |
 | RF-P3c | 日期收口+useLocalStorage+L1 排序（**暂缓，排 Fix3c 后**） | 1 | 中低 | Fix3c 提交 |
-| RF-P4 | repository+写盘加固+数据文件夹按钮 | 1 | 中 | P3c 提交 |
-| RF-P5 | 数据多文件化（B 方案） | 1 | 中高 | P4 提交+pre-migration 快照 |
-| RF-P6a | 书影/旅游新功能 | 1 | 中 | P5 提交 |
-| RF-P6b | 死代码清扫 | 1 | 低 | P6a 提交 |
-| RF-Fix4 | bug+需求批量（**P1-P6 已提前线 B 并行**；旧池 B/N/R 仍 P6b 后） | 2 | 中 | 线B独立锚/P6b 提交 |
-| RF-P7 | 设置中心四分区（前置门：细案待出） | 1 | 中 | Fix4 提交 |
+| **RF-Data** | **数据层合并卡**（原 P4+P5+P6a数据部分；3 commit：repository收口 / 多文件化+自定义位置+版本管理+开源隔离 / 书影旅游数据模型+占位；细目见「十八A」） | 3 | 高 | P3c 提交 |
+| RF-Moments | 书影/旅游完整 UI（原 P6a UI 部分；细案 v1 已在总集待批） | 1 | 中 | RF-Data 提交 |
+| RF-Clean | 死代码清扫（原 P6b；审查登记累计项） | 1 | 低 | RF-Data 提交 |
+| RF-Polish | bug+需求批量（原 Fix4；**P1-P6 线 B 并行中**；旧池 B/N/R 仍本卡） | 2 | 中 | 线B独立锚/RF-Clean 提交 |
+| RF-Release | 设置中心五分区+更新通知（原 P7；前置门：细案待出）→v1.0.0 收官 | 1 | 中 | RF-Polish 提交 |
 
 ---
 
@@ -237,7 +242,40 @@ app/layout/SettingsModal.tsx      ← 设置弹窗迁出。状态归属：showSe
 
 ---
 
+## 十八A、RF-Data：数据层合并卡（原 P4+P5+P6a数据部分，3 commit，高风险档）
+
+> **合并裁定（用户 2026-09-09）**：P4/P5/P6a 数据部分并为一张卡一次跑完（开发不逐步对话确认）；
+> 测试一次、审查一次（仅 Data-2 迁移专项）、手测最后一场。**旧 P4/P5/P6a 三节留档不再维护。**
+
+**commit 1 `refactor(RF-Data-1): repository 收口+写盘加固`**（=原 RF-P4 全部）：
+- 新建 src/data/repository.ts（渲染端唯一入口 loadAll/persist + StorageDriver 接口，RF-Moments 扩域不动接口）+ src/data/types.ts
+- 新建 electron/data/store.js：defaultDb/loadDb（自愈整体迁入）/saveDb（原子写 .tmp→rename）+ startupBackup 滚动 7 份 + **数据根解析走 %APPDATA%/MyHaruto/config.json（{dataDir}，缺省 data/——自定义位置奠基）**
+- main.js 瘦身（窗口+IPC 委托）+ preload openDataDir + global.d.ts 类型 + SettingsModal「打开数据文件夹」按钮 + App 两 useEffect→repository
+- 验收 grep：window.myharuto 仅 repository.ts；main.js 无 fs/ipcMain；openDataDir 双命中；backups/ 出文件
+
+**commit 2 `refactor(RF-Data-2): 数据多文件化+自定义位置+版本管理+开源隔离`**（=原 RF-P5 全部+数据层补充）：
+- 多文件布局（全模块范围总则：tasks/habits/focus-sessions/important-days/period[单文件]/sleep[单文件]/logs/backups；albums/travel/town/assets 标注后置域本卡不建）
+- AI 模板五件（仓库 data/ai/：chat-messages 空数组/persona.md/memories×3/agent/activity-log）+开源隔离验收（git ls-files data/ 跟踪+无用户数据提交史）
+- 启动三分支（manifest/迁移 fail-safe/全新安装）统一幂等；persist 变化域检测+删除留痕 logs/changes
+- 自定义位置：首次选位弹窗 + 设置「数据位置」区块（当前路径/更改/打开文件夹）+ 更改流程（复制→校验→改 config→重启生效，失败回滚不更新 config）
+- 版本管理：manifest {dataVersion, appVersion, lastMigratedAt}；升级幂等迁移写回；**降级保护**（数据版本>应用支持→提示升级不强行加载）；更新通知 P7/RF-Release 实现（本卡只留字段）
+- scripts/verify-migration.mjs + verify:data
+- **审查专项（唯一审查点）**：迁移逻辑 fail-safe 审计（三分支幂等/失败回退/降级保护），审计范围显式化
+- 用户手测：迁移无感→数据目录肉眼可读→全功能回归→重启两次→删任务 logs/changes 出记录→verify:data PASS→更改位置全流程（成功+人为失败回滚）→重启稳定
+
+**commit 3 `feat(RF-Data-3): 书影/旅游数据模型+占位`**（=原 RF-P6a 数据部分）：
+- albums/travel 两域文件（MomentEntry 模型 {id,category,groupKey,imagePath,caption,eventDate,sortOrder,createdAt}）落 repository/types
+- L1 album/travel 两图标指向新占位页（Placeholder 复用，标注 RF-Moments 待建）；assets:import IPC **归 RF-Moments**（占位不需要）
+- 完整 UI（相册流/分组/MomentForm/轻盒）= **RF-Moments** 独立卡（细案 v1 已在总集「十、」节待批）
+
+**验收线（合并）**：三 commit 各过三关；测试一次（三段范围确认+新增项+回归抽查：迁移完整性+自定义位置回滚+开源隔离 grep）；审查一次（仅 Data-2 专项）；手测最后一场。
+**回滚**：Data-1→P3c 提交；Data-2→Data-1；Data-3→Data-2。
+
+---
+
 ## 八、RF-P4：repository 收口 + 写盘加固 + 数据文件夹入口
+
+> ⚠️ **已并入 RF-Data（上节 Data-1），本节留档不再维护。**
 
 **渲染端行为零变化，只动数据通道。**
 
@@ -263,6 +301,8 @@ app/layout/SettingsModal.tsx      ← 设置弹窗迁出。状态归属：showSe
 ---
 
 ## 九、RF-P5：数据多文件化（B 方案，最高风险卡，维护 Agent 待命）
+
+> ⚠️ **已并入 RF-Data（Data-2），本节留档不再维护。**
 
 **核心设计：IPC 契约不变（db:get/db:save），只换主进程内部实现，渲染端零改动。**
 
@@ -319,6 +359,8 @@ AI 模板五件在仓库 data/ai/ 下且 git 已跟踪（`git ls-files data/`）
 ---
 
 ## 十、RF-P6a：书影清单 + 旅游札记（细案规格 v1，2026-09-08）
+
+> ⚠️ **数据模型+占位已并入 RF-Data（Data-3）；本节细案 v1 = RF-Moments（完整 UI 卡）细案，待用户批后实施。**
 
 > **前置门**：本细案经用户确认后才开发。数据读写走 repository（P4 产物）；P5 已落 albums/travel 域文件与 assets/ 目录。
 
@@ -687,6 +729,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.23 | **RF-Data 合并卡**（P4+P5+P6a数据部分→3 commit 一次跑完；书影旅游完整 UI 拆出 RF-Moments 独立卡）；**P6b/Fix4/P7 更名 RF-Clean/RF-Polish/RF-Release**；总纲四条节俭令（报告四项制不贴代码/测试三件套轻量化/审查仅搬移迁移类[RF-Data-2 迁移专项例外]/非阻塞 bug 严格进池）；RF-Data 合并范围待用户确认后派发 |
 | v1.22 | **分级验收**（高/中/低三档，P4/P5 开发一次跑全卡）+ **docs/AGENT_STATE.md 机制**（新会话第一句读它，规划层阶段收尾更新 ≤50 行）；P3c 修补（detailWidth 双向断裂）适用低风险档 |
 | v1.20 | **数据层设计补充（用户 2026-09-08，P4/P5/P7 分配）**：数据范围总则=全模块（tasks/habits/focus-sessions/important-days/period/sleep/albums/travel/ai/town/assets/logs/backups）全部跟随用户指定位置，period/sleep 小数据量保持根单文件；**自定义位置机制**（config.json@%APPDATA% 固定+dataDir 可搬/P4 store.js 奠基读取、P5 全量实现：首次选位+设置「数据位置」区块+复制校验回滚流程）；**版本更新机制**（manifest dataVersion/appVersion/lastMigratedAt 对齐+降级保护不强行加载+更新通知 P7 GitHub Releases）；README 增「📁 你的数据存在哪」教程 |
 | v1.19 | **AI 模块设计基线入册（用户 2026-09-08 插播，自主分配）**：①PRD §3.7 重写——AI 设计原则（美术资产≠AI 能力，2D/3D 不影响任务/记忆/对话）+CharacterStage/character-state.json 渲染解耦+消息统一模型（chat-messages.json，sourceType chat/task/importantDay/period/town，时间线统一，记忆库唯一提取源）②TECH 新增 §3.4 AI 数据域（模型/模板集/隔离铁律/渲染解耦）③RF-P5 卡更新：ai/ 行改"仓库模板 P5 建、实体 M5 起"+步骤 6 AI 模板五件+验收加 git ls-files data/ 与无用户数据提交史校验 ④README 补数据与隐私节。数据隔离铁律=仓库 data/ 只放空模板+默认人设，用户数据 %APPDATA% 永不上传 |
