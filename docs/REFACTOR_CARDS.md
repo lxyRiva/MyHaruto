@@ -13,13 +13,15 @@
 
 ## 一、执行总纲（全程有效，各卡不再重复）
 
-**通用交付链**（每卡每段必走）：
+**通用交付链（2026-09-08 起分级验收，用户定）**：
 
 ```
-开工锁自查（开发）→ 实现 + 交付报告（大白话：改了什么/为什么）
-→ 测试报告（清单逐项 ✅/❌，测试会话禁止修码）
-→ 审查报告（P0 阻塞/P1 应修/P2 建议，审查会话开工先声明「切换为审查模式」）
-→ 用户手测 + 授权 commit → 文档同步（STRUCTURE/TECH/CONTINUE）→ 下一卡
+高风险（P4/P5 数据层）：开发 → 测试 → 审查 → 手测 → commit
+中风险（P6a/P6b）    ：开发 → 测试 → 手测 → commit（免审查）
+低风险（小修补）      ：开发 → 手测 → commit（免测试审查）
+P4/P5 开发一次跑完全卡再交付，不逐步对话确认；测试审查一次做，手测最后一场
+基础动作不变：开工锁（含杀净旧 Electron）→ 交付报告五段 → 停手等验收
+新会话第一句话：读 docs/AGENT_STATE.md（规划层每阶段收尾更新，≤50 行）
 ```
 
 **四道锁（文件落地保障）**：
@@ -685,5 +687,6 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.22 | **分级验收**（高/中/低三档，P4/P5 开发一次跑全卡）+ **docs/AGENT_STATE.md 机制**（新会话第一句读它，规划层阶段收尾更新 ≤50 行）；P3c 修补（detailWidth 双向断裂）适用低风险档 |
 | v1.20 | **数据层设计补充（用户 2026-09-08，P4/P5/P7 分配）**：数据范围总则=全模块（tasks/habits/focus-sessions/important-days/period/sleep/albums/travel/ai/town/assets/logs/backups）全部跟随用户指定位置，period/sleep 小数据量保持根单文件；**自定义位置机制**（config.json@%APPDATA% 固定+dataDir 可搬/P4 store.js 奠基读取、P5 全量实现：首次选位+设置「数据位置」区块+复制校验回滚流程）；**版本更新机制**（manifest dataVersion/appVersion/lastMigratedAt 对齐+降级保护不强行加载+更新通知 P7 GitHub Releases）；README 增「📁 你的数据存在哪」教程 |
 | v1.19 | **AI 模块设计基线入册（用户 2026-09-08 插播，自主分配）**：①PRD §3.7 重写——AI 设计原则（美术资产≠AI 能力，2D/3D 不影响任务/记忆/对话）+CharacterStage/character-state.json 渲染解耦+消息统一模型（chat-messages.json，sourceType chat/task/importantDay/period/town，时间线统一，记忆库唯一提取源）②TECH 新增 §3.4 AI 数据域（模型/模板集/隔离铁律/渲染解耦）③RF-P5 卡更新：ai/ 行改"仓库模板 P5 建、实体 M5 起"+步骤 6 AI 模板五件+验收加 git ls-files data/ 与无用户数据提交史校验 ④README 补数据与隐私节。数据隔离铁律=仓库 data/ 只放空模板+默认人设，用户数据 %APPDATA% 永不上传 |
