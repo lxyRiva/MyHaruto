@@ -53,6 +53,8 @@ export default function TaskCardBase({
   const hasChildren = childrenTasks.length > 0
   const visibleChildren = expanded ? childrenTasks : childrenTasks.slice(0, 1)
   const titleTone = task.done ? 'text-neutral-400 line-through' : 'text-neutral-700 dark:text-neutral-200'
+  // RF-P2 勾选框按优先级变色（色板同 taskMeta PRIO_COLOR：高=红/中=橙/低=蓝；none 回落中性灰）；done 绿保持完成语义
+  const prioColor = task.done ? undefined : meta.priorityFlag
 
   const checkbox = (
     <button
@@ -61,10 +63,13 @@ export default function TaskCardBase({
         onToggleDone(task.id)
       }}
       title={task.done ? '标记为未完成' : '标记为完成'}
+      style={prioColor ? { borderColor: prioColor } : undefined}
       className={`grid h-4 w-4 shrink-0 place-items-center rounded-[3px] border transition-colors ${
         task.done
           ? 'border-[#5b8c5a] bg-[#5b8c5a] text-white'
-          : 'border-neutral-300 text-transparent hover:border-haruto-sea dark:border-neutral-600'
+          : prioColor
+            ? 'text-transparent'
+            : 'border-neutral-300 text-transparent hover:border-haruto-sea dark:border-neutral-600'
       } ${variant === 'board' ? 'mt-0.5' : 'mt-0.5'}`}
     >
       <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -81,29 +86,6 @@ export default function TaskCardBase({
       <div className={`min-w-0 flex-1 leading-snug break-all ${variant === 'list' ? 'text-sm' : 'text-[13px]'} ${titleTone}`}>
         {task.title}
       </div>
-      {/* 横板：日期在标题行右侧（今天紫色）；点击编辑（onEditDate 注入，原 ListTaskCard 交互） */}
-      {variant === 'list' && meta.dateText && (
-        onEditDate ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onEditDate()
-            }}
-            title="点击修改日期与提醒"
-            className={`shrink-0 text-[11px] tabular-nums hover:text-haruto-sea hover:underline ${
-              meta.dateText === '今天' ? 'font-medium text-purple-500' : 'text-neutral-600 dark:text-neutral-300'
-            }`}
-          >
-            {meta.dateText}
-          </button>
-        ) : (
-          <span
-            className={`shrink-0 text-[11px] tabular-nums ${meta.dateText === '今天' ? 'font-medium text-purple-500' : 'text-neutral-600 dark:text-neutral-300'}`}
-          >
-            {meta.dateText}
-          </span>
-        )
-      )}
       {hasChildren && (
         <button
           onClick={(e) => {
@@ -119,35 +101,33 @@ export default function TaskCardBase({
     </div>
   )
 
+  // RF-P4 日期色：过期未完成红显（判定唯一来源 taskMeta.dateOverdue）；今天紫（既定）；其余中性
+  const dateTone = meta.dateOverdue
+    ? 'font-medium text-red-500'
+    : meta.dateText === '今天'
+      ? 'font-medium text-purple-500'
+      : 'text-neutral-600 dark:text-neutral-300'
+  // RF-P5 meta 行重排（两变体统一）：最左=H2 标签色点 → 中间=置顶/提醒/统计 → 最右=日期（点击编辑由消费层注入）
+  const dateEl = meta.dateText ? (
+    onEditDate ? (
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onEditDate()
+        }}
+        title="点击修改日期与提醒"
+        className={`shrink-0 tabular-nums hover:text-haruto-sea hover:underline ${dateTone}`}
+      >
+        {meta.dateText}
+      </button>
+    ) : (
+      <span className={`shrink-0 tabular-nums ${dateTone}`}>{meta.dateText}</span>
+    )
+  ) : null
+
   const metaRow = (
     <div className={`flex items-center text-[11px] ${variant === 'list' ? 'mt-1 gap-2' : 'mt-1 gap-2.5'}`}>
-      {/* 看板：日期+铃铛在 meta 行首（点击行为由消费层包壳时注入，此处纯展示） */}
-      {variant === 'board' && meta.dateText && (
-        onEditDate ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onEditDate()
-            }}
-            title="点击修改日期与提醒"
-            className={`tabular-nums hover:text-haruto-sea hover:underline ${meta.dateText === '今天' ? 'font-medium text-purple-500' : 'text-neutral-600 dark:text-neutral-300'}`}
-          >
-            {meta.dateText}
-          </button>
-        ) : (
-          <span className={`tabular-nums ${meta.dateText === '今天' ? 'font-medium text-purple-500' : 'text-neutral-600 dark:text-neutral-300'}`}>
-            {meta.dateText}
-          </span>
-        )
-      )}
-      {variant === 'board' && meta.alarmIcon && (
-        <span className="flex items-center text-haruto-sea" title="已设提醒">
-          <span className="[&>svg]:h-3 [&>svg]:w-3">
-            <IconClock />
-          </span>
-        </span>
-      )}
-      {task.isPinnedToday && <span className="text-[10px] text-haruto-sea">置顶</span>}
+      {/* 最左：归属徽章（H2 色点/H1 清单名） */}
       {meta.tagBadge && (
         <span className="flex min-w-0 items-center gap-1" title={meta.tagBadge.name}>
           {meta.tagBadge.emoji ? (
@@ -171,6 +151,15 @@ export default function TaskCardBase({
           )}
         </span>
       )}
+      {/* 中间：置顶/提醒/统计 */}
+      {task.isPinnedToday && <span className="text-[10px] text-haruto-sea">置顶</span>}
+      {variant === 'board' && meta.alarmIcon && (
+        <span className="flex items-center text-haruto-sea" title="已设提醒">
+          <span className="[&>svg]:h-3 [&>svg]:w-3">
+            <IconClock />
+          </span>
+        </span>
+      )}
       {meta.minutes > 0 && (
         <span className="flex shrink-0 items-center gap-0.5 text-neutral-400 tabular-nums" title={`已专注 ${meta.minutes} 分钟`}>
           <span className="[&>svg]:h-3 [&>svg]:w-3">
@@ -185,7 +174,7 @@ export default function TaskCardBase({
         </span>
       )}
       <span
-        className={`flex items-center gap-0.5 ${variant === 'list' ? '' : 'ml-auto'} ${
+        className={`flex items-center gap-0.5 ${
           task.taskComments.length > 0 ? 'text-[#6a994e]' : 'text-neutral-300 dark:text-neutral-600'
         }`}
         title={task.taskComments.length > 0 ? `${task.taskComments.length} 条留言` : '暂无留言'}
@@ -195,6 +184,8 @@ export default function TaskCardBase({
         </span>
         {task.taskComments.length > 0 && <span className="tabular-nums">{task.taskComments.length}</span>}
       </span>
+      {/* 最右：日期 */}
+      {dateEl && <span className="ml-auto min-w-0 text-right">{dateEl}</span>}
     </div>
   )
 

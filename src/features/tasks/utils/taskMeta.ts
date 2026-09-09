@@ -18,6 +18,8 @@ export interface TaskTagBadge {
 export interface TaskMeta {
   /** 到期日显示文案：今天 → 「今天」（紫色样式判定同此），否则 MM/DD；无日期 null */
   dateText: string | null
+  /** 是否过期未完成（dueDate 早于今天且未完成；RF-P4 日期变红判定唯一来源） */
+  dateOverdue: boolean
   /** 优先级旗标色（none 为 null，不渲染） */
   priorityFlag: string | null
   /** 归属徽章：有 section → H2（可跳看板）；无 section 按 tagId 回退 H1 清单；两者皆无 null */
@@ -51,6 +53,7 @@ export function buildTaskMeta(
 
   return {
     dateText: task.dueDate ? (task.dueDate === today ? '今天' : task.dueDate.slice(5).replace('-', '/')) : null,
+    dateOverdue: !!task.dueDate && task.dueDate < today && !task.done,
     priorityFlag: PRIO_COLOR[prio],
     tagBadge,
     alarmIcon: !!task.remindAt,

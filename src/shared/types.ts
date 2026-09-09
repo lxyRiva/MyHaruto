@@ -52,6 +52,7 @@ export interface Task {
   priority?: 'none' | 'low' | 'mid' | 'high' // 优先级旗帜
   masterTaskId?: string | null // 关联归属：本任务及其子树专注时长并入该主任务
   isPinnedToday?: boolean // 手动置顶进今日
+  isPinnedGroup?: boolean // 置顶该组（项目维度/组首，RF-P3）：主任务排分组/集合第一位，子任务排主任务下第一位；与 isPinnedToday 独立不混用（可选字段，旧数据无需自愈）
   sectionId: string | null // 所属看板分组（H2 下的 Section），新建任务必选
   checklistItems: ChecklistItem[] // 检查事项
   taskComments: TaskComment[] // AI留言/用户评论
@@ -103,6 +104,7 @@ export interface SleepRecord {
   date: string // YYYY-MM-DD（凌晨0-5点入睡归属前一天）
   bedtime: string // HH:MM
 }
+
 
 export interface Db {
   tasks: Task[]

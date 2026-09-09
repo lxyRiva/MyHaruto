@@ -33,6 +33,7 @@ export default function Recent7View(props: {
     onDeleteChecklistItem: props.onDeleteChecklistItem,
     onSetTaskReminder: props.onSetTaskReminder,
     onUpdateTaskDue: props.onUpdateTaskDue,
+    onUpdateTask: props.onUpdateTask,
     onAddSubtask: props.onAddSubtask,
     onUpdateTag: props.onUpdateTag,
     onUpdateTaskSection: props.onUpdateTaskSection,
@@ -49,9 +50,10 @@ export default function Recent7View(props: {
   const mainTasks = useMemo(() => tasks.filter((t) => !t.parentTaskId), [tasks])
 
   // RF-Fix2 语义：done 未聚合 → 原分组灰显原位；根 aggregated → 出分组进底部「已完成」折叠区
+  // 组内排序随全局 taskSort 维度链（RF-P2 收编，不留第二套）
   const overdue = mainTasks
     .filter((t) => t.dueDate && t.dueDate < today && (!t.done || !foldedOf(t)))
-    .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
+    .sort(taskSort)
   const overdueIds = new Set(overdue.map((t) => t.id))
   const todays = mainTasks
     .filter((t) => !overdueIds.has(t.id) && (t.dueDate === today || t.isPinnedToday) && (!t.done || !foldedOf(t)))

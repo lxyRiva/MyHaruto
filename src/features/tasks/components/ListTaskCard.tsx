@@ -5,6 +5,7 @@ import { useState } from 'react'
 import type { ChecklistItem, Section, SubTag, Tag, Task } from '../../../shared/types'
 import FloatingMenu from '../../../shared/components/FloatingMenu'
 import { buildTaskContextMenu } from './taskMenu'
+import { pinnedGroupFirst } from '../utils/taskSort'
 import { DatePickerModal } from './DateTimePickers'
 import TaskCardBase from './TaskCardBase'
 import TaskDeleteConfirmModal from './TaskDeleteConfirmModal'
@@ -22,6 +23,7 @@ export interface ListCardCallbacks {
   onDeleteChecklistItem: (taskId: string, itemId: string) => void
   onSetTaskReminder: (id: string, remindAt: string | null, remindDaysBefore: number | null) => void
   onUpdateTaskDue: (id: string, dueDate: string | null) => void
+  onUpdateTask: (id: string, patch: Partial<Task>) => void // RF-P3「置顶该组」通路（App listViewProps 已下发）
   onAddSubtask: (parentId: string, title: string) => void
   onUpdateTag: (id: string, tagId: string | null) => void
   onUpdateTaskSection: (id: string, sectionId: string | null) => void
@@ -52,6 +54,7 @@ export default function ListTaskCard({
   onDeleteChecklistItem,
   onSetTaskReminder,
   onUpdateTaskDue,
+  onUpdateTask,
   onAddSubtask,
   onUpdateTag,
   onUpdateTaskSection,
@@ -76,8 +79,8 @@ export default function ListTaskCard({
   const [dateOpen, setDateOpen] = useState(false)
   const [pickingDate, setPickingDate] = useState(false)
 
-  // 子任务：全量任务内 parentTaskId 指向本卡的任务（seen 累积防环）
-  const children = allTasks.filter((t) => t.parentTaskId === task.id && !seen.has(t.id))
+  // 子任务：全量任务内 parentTaskId 指向本卡的任务（seen 累积防环）；组内置顶的子任务排主任务下第一位（RF-P3）
+  const children = pinnedGroupFirst(allTasks.filter((t) => t.parentTaskId === task.id && !seen.has(t.id)))
   const childSeen = (id: string) => new Set([...seen, id])
 
   const base = (
@@ -102,7 +105,7 @@ export default function ListTaskCard({
           minutesOf={minutesOf}
           {...{
             aiName, tags, subTags, sections, onToggleDone, onToggleChecklist, onAddChecklistItem,
-            onUpdateChecklistItem, onDeleteChecklistItem, onSetTaskReminder, onUpdateTaskDue, onAddSubtask,
+            onUpdateChecklistItem, onDeleteChecklistItem, onSetTaskReminder, onUpdateTaskDue, onUpdateTask, onAddSubtask,
             onUpdateTag, onUpdateTaskSection, onTogglePinned, onSetPriority, onSetMasterTask, onPomodoro,
             onDeleteTaskTree, onOpenSubTag,
           }}
@@ -175,6 +178,7 @@ export default function ListTaskCard({
             onSetPriority,
             onSetMasterTask,
             onTogglePinned,
+            onUpdateTask,
             onUpdateTag,
             onUpdateTaskSection,
             onSetDueDate: onUpdateTaskDue,

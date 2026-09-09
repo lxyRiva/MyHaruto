@@ -70,6 +70,7 @@ export function buildTaskContextMenu(
     onSetPriority: (id: string, p: Priority) => void
     onSetMasterTask: (id: string, masterId: string | null) => void
     onTogglePinned: (id: string) => void
+    onUpdateTask: (id: string, patch: Partial<Task>) => void // RF-P3「置顶该组」走通用 updateTask 通路
     onUpdateTag: (id: string, tagId: string | null) => void
     onUpdateTaskSection: (id: string, sectionId: string | null) => void
     onSetDueDate: (id: string, date: string | null) => void
@@ -133,6 +134,11 @@ export function buildTaskContextMenu(
           : [{ label: '（暂无可关联的主任务）' }],
     },
     { label: withCheck('置顶今日', !!task.isPinnedToday), onClick: () => d.onTogglePinned(task.id) },
+    {
+      // RF-P3 置顶拆分：置顶该组=项目维度/组首（isPinnedGroup），与置顶今日（时间维度/isPinnedToday）独立字段不混用
+      label: withCheck('置顶该组', !!task.isPinnedGroup),
+      onClick: () => d.onUpdateTask(task.id, { isPinnedGroup: !task.isPinnedGroup }),
+    },
     {
       label: '标签',
       submenu: d.subTags.length

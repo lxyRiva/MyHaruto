@@ -7,6 +7,7 @@ import ListTaskCard, { type ListCardCallbacks } from '../components/ListTaskCard
 import { DoneFoldSection } from '../components/DoneFoldSection'
 import NewTaskBar from '../components/NewTaskBar'
 import { collapsedOf } from '../utils/taskTree'
+import { pinnedGroupFirst } from '../utils/taskSort'
 import type { Priority } from '../types'
 
 export default function Tasks(props: {
@@ -28,6 +29,7 @@ export default function Tasks(props: {
   onDeleteChecklistItem: (taskId: string, itemId: string) => void
   onSetTaskReminder: (id: string, remindAt: string | null, remindDaysBefore: number | null) => void
   onUpdateTaskDue: (id: string, dueDate: string | null) => void
+  onUpdateTask: (id: string, patch: Partial<Task>) => void // RF-P3「置顶该组」通路（listViewProps 已下发）
   onAddSubtask: (parentId: string, title: string) => void
   onUpdateTag: (id: string, tagId: string | null) => void
   onUpdateTaskSection: (id: string, sectionId: string | null) => void
@@ -80,6 +82,7 @@ export default function Tasks(props: {
     onDeleteChecklistItem: props.onDeleteChecklistItem,
     onSetTaskReminder: props.onSetTaskReminder,
     onUpdateTaskDue: props.onUpdateTaskDue,
+    onUpdateTask: props.onUpdateTask,
     onAddSubtask: props.onAddSubtask,
     onUpdateTag: props.onUpdateTag,
     onUpdateTaskSection: props.onUpdateTaskSection,
@@ -124,7 +127,7 @@ export default function Tasks(props: {
         g.items.length ? (
           <div key={g.name} className="mt-6">
             <div className="text-xs font-medium text-neutral-400 mb-2">{g.name} {g.items.length}</div>
-            <div className="space-y-2">{g.items.map(cardOf)}</div>
+            <div className="space-y-2">{pinnedGroupFirst(g.items).map(cardOf)}</div>
           </div>
         ) : null,
       )}

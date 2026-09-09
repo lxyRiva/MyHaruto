@@ -8,6 +8,7 @@ import FloatingMenu from '../../../shared/components/FloatingMenu'
 import { DatePickerModal } from './DateTimePickers'
 import { todayStr } from '../../../shared/utils/date'
 import { buildTaskContextMenu, type CardBundle } from './taskMenu'
+import { pinnedGroupFirst } from '../utils/taskSort'
 import TaskCardBase from './TaskCardBase'
 import TaskDeleteConfirmModal from './TaskDeleteConfirmModal'
 import TaskDetailContent from './TaskDetailContent'
@@ -61,8 +62,8 @@ export default function TaskCard({
   /* 子任务：本列内 parentTaskId 指向本卡的任务（seen 防环）；折叠时只显示第一个 */
   // 子任务跟随父卡所在分区（RF-Fix1 修正）：父卡在折叠区 → 子孙跟随显示（可展开查看）；
   // 父卡在堆叠区 → 排除已折叠任务（其已在折叠区显示，不在堆叠区父卡下重复）
-  const children = columnTasks.filter(
-    (t) => t.parentTaskId === task.id && !seen.has(t.id) && (parentFolded || !foldedIds.has(t.id))
+  const children = pinnedGroupFirst(
+    columnTasks.filter((t) => t.parentTaskId === task.id && !seen.has(t.id) && (parentFolded || !foldedIds.has(t.id)))
   )
   const childSeen = (id: string) => new Set([...seen, id])
 
@@ -110,6 +111,7 @@ export default function TaskCard({
     onSetPriority,
     onSetMasterTask,
     onTogglePinned,
+    onUpdateTask,
     onUpdateTag,
     onUpdateTaskSection,
     onSetDueDate: onUpdateTaskDue,

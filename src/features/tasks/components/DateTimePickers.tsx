@@ -132,7 +132,8 @@ export function DatePickerModal({
 }) {
   const now = new Date()
   const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() })
-  const [selected, setSelected] = useState<string | null>(initialDueDate)
+  // RF-P1①②：无初始日期 → 月历默认选中今日（确认即保存为今日；再点已选日期取消选择后确认 = 无日期）
+  const [selected, setSelected] = useState<string | null>(initialDueDate ?? todayStr())
   const [remindHour, setRemindHour] = useState(9)
   const [remindChoice, setRemindChoice] = useState<number | 'custom' | undefined>(undefined) // undefined = 未动（保留原值）
   // 修正3：自定义提醒可选日期——默认任务 dueDate 的前一天（无日期则今天）

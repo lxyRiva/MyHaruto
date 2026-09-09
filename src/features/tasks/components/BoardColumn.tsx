@@ -5,7 +5,7 @@ import { IconChevron } from '../../../shared/components/icons'
 import FloatingMenu from '../../../shared/components/FloatingMenu'
 import TaskCard from './TaskCard'
 import { NewTaskFields } from './NewTaskBar'
-import { taskSort } from '../utils/taskSort'
+import { taskSort, pinnedGroupFirst } from '../utils/taskSort'
 import { collapsedOf } from '../utils/taskTree'
 import type { CardBundle } from './taskMenu'
 import type { Priority } from '../types'
@@ -52,7 +52,7 @@ export default function SectionColumn({
      折叠区 = 根任务 aggregated（整树判定）∪ 规则6 散件（显式聚合的 done 子任务）；
      堆叠区 = 其余全部（未完成原位 + 已完成但未聚合的灰显原位）；子任务永远嵌套跟随父卡 */
   const isFolded = collapsedOf(tasks)
-  const stack = tasks.filter((t) => !isFolded(t)).sort(taskSort)
+  const stack = pinnedGroupFirst(tasks.filter((t) => !isFolded(t)).sort(taskSort)) // 置顶该组排组首（RF-P3）
   const folded = tasks.filter((t) => isFolded(t))
   const stackIds = new Set(stack.map((t) => t.id))
   const foldedIds = new Set(folded.map((t) => t.id))

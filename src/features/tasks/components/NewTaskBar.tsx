@@ -126,8 +126,9 @@ export function NewTaskFields({
                     key={f.v}
                     onClick={() => onPriority(f.v)}
                     title={f.label}
+                    style={priority === f.v ? { backgroundColor: `${f.color}22`, boxShadow: `inset 0 0 0 1px ${f.color}` } : undefined}
                     className={`grid h-7 w-7 place-items-center rounded-md transition-all ${
-                      priority === f.v ? 'bg-black/10 ring-1 ring-neutral-400 dark:bg-white/10' : 'hover:bg-black/5 dark:hover:bg-white/10'
+                      priority === f.v ? '' : 'hover:bg-black/5 dark:hover:bg-white/10'
                     }`}
                   >
                     <FlagIcon color={f.color} />
@@ -215,6 +216,14 @@ export default function NewTaskBar({
         subTagId={subTagId}
         onSubTagId={setSubTagId}
       />
+      {/* RF-P1④：最右侧「创建」按钮（与回车等效，走同一 submit 清空逻辑） */}
+      <button
+        onClick={submit}
+        title="创建任务"
+        className="shrink-0 rounded-lg bg-haruto-sea px-3.5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+      >
+        创建
+      </button>
     </div>
   )
 }

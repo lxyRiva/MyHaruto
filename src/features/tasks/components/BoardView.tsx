@@ -5,7 +5,7 @@ import type { Priority } from '../types'
 import { IconChevron } from '../../../shared/components/icons'
 import TaskCard from './TaskCard'
 import { default as SectionColumn } from './BoardColumn'
-import { taskSort } from '../utils/taskSort'
+import { taskSort, pinnedGroupFirst } from '../utils/taskSort'
 import type { CardBundle } from './taskMenu'
 
 /* ---------- H2 空分组引导 ---------- */
@@ -126,7 +126,7 @@ export default function BoardView({
 
   const byOrder = (a: { isPinned: boolean; order: number }, b: { isPinned: boolean; order: number }) =>
     a.isPinned === b.isPinned ? a.order - b.order : a.isPinned ? -1 : 1
-  const sortUngrouped = (list: Task[]) => [...list].sort(taskSort)
+  const sortUngrouped = (list: Task[]) => pinnedGroupFirst([...list].sort(taskSort)) // 置顶该组排集合首（RF-P3）
 
   // 悬空弹窗全局互斥：同一时刻只有一张卡片的弹窗（Bug1 修复）
   const [activePopupId, setActivePopupId] = useState<string | null>(null)
@@ -201,9 +201,9 @@ export default function BoardView({
           </div>
         </div>
         {ungrouped.length > 0 && (
-          <div className="mt-2 border-t border-neutral-200/70 pt-3 dark:border-neutral-700/60">
+          <div className="mt-2 flex h-1/3 shrink-0 flex-col border-t border-neutral-200/70 pt-3 dark:border-neutral-700/60">
             <div className="px-1 pb-2 text-xs font-bold text-neutral-400">未分组 {ungrouped.length}</div>
-            <div className="flex max-w-5xl flex-wrap gap-2">
+            <div className="flex max-w-5xl flex-1 flex-wrap content-start gap-2 overflow-y-auto">
               {sortUngrouped(ungrouped)
                 .filter((t) => !t.parentTaskId)
                 .map((t) => (

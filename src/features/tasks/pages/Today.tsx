@@ -29,6 +29,7 @@ export default function Today(props: {
   onDeleteChecklistItem: (taskId: string, itemId: string) => void
   onSetTaskReminder: (id: string, remindAt: string | null, remindDaysBefore: number | null) => void
   onUpdateTaskDue: (id: string, dueDate: string | null) => void
+  onUpdateTask: (id: string, patch: Partial<Task>) => void // RF-P3「置顶该组」菜单通路（listViewProps 已下发）
   onAddSubtask: (parentId: string, title: string) => void
   onUpdateTag: (id: string, tagId: string | null) => void
   onUpdateTaskSection: (id: string, sectionId: string | null) => void
@@ -50,10 +51,10 @@ export default function Today(props: {
   const mainTasks = tasks.filter((t) => !t.parentTaskId)
   const foldedOf = collapsedOf(tasks)
   // RF-Fix2 语义：done 未聚合 → 原分组灰显原位；根 aggregated → 出分组进底部「已完成」折叠区
-  // 已逾期：今天之前到期（未完成或未聚合的已完成），最久远的在最上
+  // 已逾期：今天之前到期（未完成或未聚合的已完成）；组内排序随全局 taskSort 维度链（RF-P2 收编，不留第二套）
   const overdue = mainTasks
     .filter((t) => t.dueDate && t.dueDate < today && (!t.done || !foldedOf(t)))
-    .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
+    .sort(taskSort)
   const overdueIds = new Set(overdue.map((t) => t.id))
   // 今天：今天到期 + 置顶今日（逾期的不重复出现）
   const todays = mainTasks
@@ -76,6 +77,7 @@ export default function Today(props: {
     onDeleteChecklistItem: props.onDeleteChecklistItem,
     onSetTaskReminder: props.onSetTaskReminder,
     onUpdateTaskDue: props.onUpdateTaskDue,
+    onUpdateTask: props.onUpdateTask,
     onAddSubtask: props.onAddSubtask,
     onUpdateTag: props.onUpdateTag,
     onUpdateTaskSection: props.onUpdateTaskSection,
