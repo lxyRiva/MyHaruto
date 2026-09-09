@@ -12,6 +12,7 @@ import { useTaskSelectors } from './features/tasks/hooks/useTaskSelectors'
 import { usePomodoro } from './features/pomodoro/hooks/usePomodoro'
 import { useHabits } from './features/habits/hooks/useHabits'
 import { useImportantDays } from './features/important-days/hooks/useImportantDays'
+import { repository } from './data/repository'
 import { DEFAULT_AI_NAME } from './shared/constants'
 
 export type PageKey =
@@ -109,14 +110,14 @@ export default function App() {
   }
 
   useEffect(() => {
-    window.myharuto.getDb().then((d) => {
+    repository.loadAll().then((d) => {
       setDb(d)
       setLoaded(true)
     })
   }, [])
 
   useEffect(() => {
-    if (loaded) window.myharuto.saveDb(db)
+    if (loaded) repository.persist(db)
   }, [db, loaded])
 
   // 【视觉签名】主题切换颜色过渡依赖 styles.css 的 * transition 规则，不要移除
@@ -298,6 +299,7 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           aiName={aiName}
           onSave={(v) => setDb((d) => ({ ...d, settings: { ...d.settings, aiName: v } }))}
+          onOpenDataDir={() => repository.openDataDir()}
         />
       )}
 

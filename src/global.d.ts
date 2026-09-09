@@ -5,6 +5,7 @@ declare global {
     myharuto: {
       getDb: () => Promise<Db>
       saveDb: (db: Db) => Promise<boolean>
+      openDataDir: () => Promise<boolean>
     }
   }
 }

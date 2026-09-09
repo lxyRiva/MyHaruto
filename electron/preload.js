@@ -1,7 +1,9 @@
 // 桥梁：把主进程的数据读写能力安全暴露给界面
+// RF-Data-1：渲染端一律经 src/data/repository.ts 使用，组件/hooks 禁直接调 window.myharuto
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('myharuto', {
   getDb: () => ipcRenderer.invoke('db:get'),
   saveDb: (db) => ipcRenderer.invoke('db:save', db),
+  openDataDir: () => ipcRenderer.invoke('data:open-dir'),
 })

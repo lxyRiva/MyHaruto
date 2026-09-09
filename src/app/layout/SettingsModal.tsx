@@ -2,13 +2,15 @@
 // showSettings 开关留 App 受控（App 条件渲染 = 每次打开重新挂载、草稿重置为当前 aiName）；
 // 保存经 onSave 上抛，由 App 内联 setDb 写 settings.aiName（写入后由 db useEffect 自动持久化）
 // v1.16：Escape 改容器级（原 input 局部 onKeyDown 焦点依赖是原病灶）；input 内 Enter 保存语义保留
+// RF-Data-1：新增「数据」区块（打开数据文件夹，onOpenDataDir 由 App 注入，组件不直接碰 repository）
 import { useEffect, useState } from 'react'
 
-export default function SettingsModal({ open, onClose, aiName, onSave }: {
+export default function SettingsModal({ open, onClose, aiName, onSave, onOpenDataDir }: {
   open: boolean
   onClose: () => void
   aiName: string
   onSave: (v: string) => void
+  onOpenDataDir: () => void
 }) {
   const [aiNameDraft, setAiNameDraft] = useState(aiName)
 
@@ -50,6 +52,18 @@ export default function SettingsModal({ open, onClose, aiName, onSave }: {
           className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700
             bg-white dark:bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-haruto-sea"
         />
+        {/* RF-Data-1：数据区块（Data-2 扩展为数据位置管理：当前路径/更改/打开） */}
+        <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+          <div className="text-xs text-neutral-500 mb-1.5">数据</div>
+          <button
+            onClick={onOpenDataDir}
+            className="w-full text-xs px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600
+              text-neutral-600 dark:text-neutral-300 hover:border-haruto-sea hover:text-haruto-sea
+              transition-colors"
+          >
+            打开数据文件夹
+          </button>
+        </div>
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
