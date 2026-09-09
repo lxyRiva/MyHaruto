@@ -2,7 +2,7 @@
 // 分组语义与今日/最近7天统一（Fix1）：done 未聚合 → 原日期组灰显原位；根 aggregated → 出组进折叠区
 import { useMemo } from 'react'
 import type { FocusSession, Section, SubTag, Task, Tag } from '../../../shared/types'
-import { todayStr } from './Today'
+import { todayStr } from '../../../shared/utils/date'
 import ListTaskCard, { type ListCardCallbacks } from '../components/ListTaskCard'
 import { DoneFoldSection } from '../components/DoneFoldSection'
 import NewTaskBar from '../components/NewTaskBar'

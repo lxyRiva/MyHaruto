@@ -16,6 +16,7 @@ import * as echarts from 'echarts';
 // 项目共享类型：Task（parentTaskId 为空表示主任务）、Tag、
 // FocusSession（番茄钟专注记录，startedAt 为 ISO 字符串）、SleepRecord（date/bedtime）
 import type { Task, Tag, FocusSession, SleepRecord } from '../../../shared/types';
+import { pad2, fmtDate as toISODate, localDateOf } from '../../../shared/utils/date';
 
 /* ==================== 常量与工具函数 ==================== */
 /** 海蓝主题色（与全局强调色一致） */
@@ -47,16 +48,6 @@ const TEXT_SECONDARY = '#999';
  */
 const HEAT_LEVELS = ['#eef4f8', '#cfe0ea', '#9dc0d4', '#5f94b8', '#3d7ea6'] as const;
 // 0 分钟档的暗色替代色为 #232a30（写在类名里：bg-[#eef4f8] dark:bg-[#232a30]，Tailwind 需字面量）
-
-/** 数字补零为两位字符串 */
-const pad2 = (n: number): string => String(n).padStart(2, '0');
-
-/** Date → 'YYYY-MM-DD'（补零，与 date input 的取值格式一致） */
-const toISODate = (d: Date): string =>
-  `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-
-/** ISO 时间字符串 → 本地 'YYYY-MM-DD'（直接 slice 是 UTC 日期，0-8 点的记录会算到前一天） */
-const localDateOf = (iso: string): string => toISODate(new Date(iso));
 
 /** Date → 'YYYY-MM' */
 const toISOMonth = (d: Date): string => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;

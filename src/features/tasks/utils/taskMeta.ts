@@ -3,7 +3,7 @@
 // 横板 ListTaskCard 与看板 TaskCard 只做布局适配，禁止各自拼装
 import type { Section, SubTag, Tag, Task } from '../../../shared/types'
 import type { Priority } from '../types'
-import { localToday } from '../components/DateTimePickers'
+import { todayStr } from '../../../shared/utils/date'
 
 const PRIO_COLOR: Record<Priority, string | null> = { high: '#ef4444', mid: '#f59e0b', low: '#3b82f6', none: null }
 
@@ -34,7 +34,7 @@ export function buildTaskMeta(
   task: Task,
   opts: { minutesOf: (id: string) => number; tagMap: Map<string, Tag>; sections?: Section[]; subTags?: SubTag[] }
 ): TaskMeta {
-  const today = localToday()
+  const today = todayStr()
   const prio = (task.priority ?? 'none') as Priority
 
   // 归属徽章：sectionId → Section → SubTag 优先；无 section 按 tagId 回退 H1 清单（P2b 映射表语义）

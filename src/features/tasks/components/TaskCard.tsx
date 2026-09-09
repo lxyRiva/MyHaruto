@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Task } from '../../../shared/types'
 import FloatingMenu from '../../../shared/components/FloatingMenu'
-import { DatePickerModal, localToday } from './DateTimePickers'
+import { DatePickerModal } from './DateTimePickers'
+import { todayStr } from '../../../shared/utils/date'
 import { buildTaskContextMenu, type CardBundle } from './taskMenu'
 import TaskCardBase from './TaskCardBase'
 import TaskDeleteConfirmModal from './TaskDeleteConfirmModal'
@@ -55,7 +56,7 @@ export default function TaskCard({
   const [confirmDelete, setConfirmDelete] = useState(false) // 修正2：删除任务确认
   const [dateOpen, setDateOpen] = useState(false) // 弹窗日期行 → 日期选择 modal
   const popOpen = activePopupId === task.id && !!pop
-  const today = localToday()
+  const today = todayStr()
 
   /* 子任务：本列内 parentTaskId 指向本卡的任务（seen 防环）；折叠时只显示第一个 */
   // 子任务跟随父卡所在分区（RF-Fix1 修正）：父卡在折叠区 → 子孙跟随显示（可展开查看）；

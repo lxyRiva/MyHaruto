@@ -6,6 +6,7 @@ import { useRef, useState } from 'react'
 import type { SubTag } from '../../../shared/types'
 import { IconCalendar, IconChevron } from '../../../shared/components/icons'
 import { DatePickerModal } from './DateTimePickers'
+import { todayStr } from '../../../shared/utils/date'
 import type { Priority } from '../types'
 
 const FLAGS: { v: Priority; color: string; label: string }[] = [
@@ -14,11 +15,6 @@ const FLAGS: { v: Priority; color: string; label: string }[] = [
   { v: 'low', color: '#3b82f6', label: '低' },
   { v: 'none', color: '#9ca3af', label: '无' },
 ]
-
-function localToday(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 const FlagIcon = ({ color }: { color: string }) => (
   <svg viewBox="0 0 24 24" className="h-4 w-4" fill={color}>
@@ -53,7 +49,7 @@ export function NewTaskFields({
   const [tagOpen, setTagOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 })
-  const today = localToday()
+  const today = todayStr()
 
   const selSub = subTags.find((s) => s.id === subTagId)
 

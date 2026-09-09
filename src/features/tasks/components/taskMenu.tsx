@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 import type { ChecklistItem, Section, SubTag, Tag, Task } from '../../../shared/types'
 import type { MenuEntry } from '../../../shared/components/FloatingMenu'
-import { localToday, pad2 } from './DateTimePickers'
+import { todayStr as localToday, pad2, addDaysStr, nextWeekdayStr } from '../../../shared/utils/date'
 import { collectTreeIds } from '../utils/taskDelete'
 import type { Priority } from '../types'
 
@@ -160,17 +160,4 @@ export function buildTaskContextMenu(
   ]
 }
 
-
-function addDaysStr(base: string, n: number): string {
-  const [y, m, d] = base.split('-').map(Number)
-  const dt = new Date(y, m - 1, d + n)
-  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`
-}
-function nextWeekdayStr(target: number, base: string): string {
-  const [y, m, d] = base.split('-').map(Number)
-  const dt = new Date(y, m - 1, d)
-  const diff = (((target - dt.getDay()) % 7) + 7) % 7 || 7
-  dt.setDate(dt.getDate() + diff)
-  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`
-}
 

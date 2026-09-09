@@ -1,7 +1,8 @@
 // 任务树体系：无限嵌套（主任务→子任务→子子任务…），任意层级统一右键、独立计时、行内加子任务
 // 今日页（Step 6 重构）：逾期/今天分组 + NewTaskBar 新建行 + ListTaskCard 列表卡片（左键选中进右栏详情）
-// RF-P2b：旧版递归节点组件及其专属辅助已删（全部页/今日页统一 ListTaskCard + TDP 渲染）；todayStr 保留（P3c 收口）
+// RF-P2b：旧版递归节点组件及其专属辅助已删（全部页/今日页统一 ListTaskCard + TDP 渲染）；todayStr 已收口 shared/utils/date（P3c）
 import { useMemo } from 'react'
+import { todayStr } from '../../../shared/utils/date'
 import type { Task, Tag } from '../../../shared/types'
 import ListTaskCard from '../components/ListTaskCard'
 import NewTaskBar from '../components/NewTaskBar'
@@ -9,11 +10,6 @@ import { taskSort } from '../utils/taskSort'
 import { collapsedOf } from '../utils/taskTree'
 import { DoneFoldSection } from '../components/DoneFoldSection'
 import type { Priority } from '../types'
-
-export function todayStr() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 /* ============ 今日页（Step 6 重构：逾期/今天分组 + 新建任务行 + 列表卡片 + 右栏详情） ============ */
 export default function Today(props: {

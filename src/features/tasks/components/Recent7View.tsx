@@ -6,19 +6,9 @@ import ListTaskCard, { type ListCardCallbacks } from './ListTaskCard'
 import NewTaskBar from './NewTaskBar'
 import { taskSort } from '../utils/taskSort'
 import { collapsedOf } from '../utils/taskTree'
+import { todayStr, addDaysStr } from '../../../shared/utils/date'
 import { DoneFoldSection } from './DoneFoldSection'
 import type { Priority } from '../types'
-
-function localToday(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function addDays(base: string, n: number): string {
-  const [y, m, d] = base.split('-').map(Number)
-  const dt = new Date(y, m - 1, d + n)
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-}
 
 export default function Recent7View(props: {
   tasks: Task[]
@@ -54,7 +44,7 @@ export default function Recent7View(props: {
     onOpenSubTag: props.onOpenSubTag,
   }
 
-  const today = localToday()
+  const today = todayStr()
   const foldedOf = collapsedOf(tasks)
   const mainTasks = useMemo(() => tasks.filter((t) => !t.parentTaskId), [tasks])
 
@@ -68,7 +58,7 @@ export default function Recent7View(props: {
     .sort(taskSort)
 
   const futureGroups = Array.from({ length: 6 }, (_, i) => {
-    const date = addDays(today, i + 1)
+    const date = addDaysStr(today, i + 1)
     const items = mainTasks
       .filter((t) => t.dueDate === date && (!t.done || !foldedOf(t)))
       .sort(taskSort)
@@ -77,7 +67,7 @@ export default function Recent7View(props: {
   }).filter((g) => g.items.length > 0)
 
   // 已完成折叠区成员：现有筛选（逾期/今天/未来6天）∩ 根 aggregated
-  const futureDates = new Set(Array.from({ length: 6 }, (_, i) => addDays(today, i + 1)))
+  const futureDates = new Set(Array.from({ length: 6 }, (_, i) => addDaysStr(today, i + 1)))
   const doneRoots = mainTasks.filter(
     (t) =>
       t.done &&

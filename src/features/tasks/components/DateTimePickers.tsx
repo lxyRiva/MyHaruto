@@ -1,13 +1,8 @@
 // 日期/时间选择组件集（RF-P2a 自 BoardView.tsx 原样迁入）
 // RF-Fix3c v1.16：DatePickerModal 补容器级 Escape（原零 Escape；对齐 FloatingMenu 写法）
+// RF-P3c：localToday/pad2 收口 shared/utils/date（原导出删除，消费方直连 date.ts）
 import { useEffect, useState } from 'react'
-
-export function localToday(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-export const pad2 = (n: number) => String(n).padStart(2, '0')
+import { todayStr, pad2 } from '../../../shared/utils/date'
 
 /* ---------- 小时滚轮（00:00-23:00 间隔1小时：滚动列表点选，选中高亮） ---------- */
 export function HourWheel({ value, onChange }: { value: number; onChange: (h: number) => void }) {
@@ -51,7 +46,7 @@ export function DayStepper({ value, onChange }: { value: string; onChange: (v: s
 export function RemindPicker({ onSave, onCancel }: { onSave: (iso: string) => void; onCancel: () => void }) {
   const [days, setDays] = useState<number | 'custom'>(0)
   const [custom, setCustom] = useState('')
-  const [customDate, setCustomDate] = useState(localToday()) // 修正3：自定义可选日期
+  const [customDate, setCustomDate] = useState(todayStr()) // 修正3：自定义可选日期
   const [hour, setHour] = useState(9)
   const effDays = days === 'custom' ? Math.max(0, Number(custom) || 0) : days
   const confirm = () => {
@@ -147,7 +142,7 @@ export function DatePickerModal({
       const dt = new Date(y, m - 1, d - 1)
       return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`
     }
-    return localToday()
+    return todayStr()
   })
   const diffDays = (a: string, b: string) => Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000)
 
@@ -162,7 +157,7 @@ export function DatePickerModal({
 
   const first = new Date(view.y, view.m, 1)
   const cells = Array.from({ length: 42 }, (_, i) => new Date(view.y, view.m, 1 - first.getDay() + i))
-  const today = localToday()
+  const today = todayStr()
   const shiftMonth = (delta: number) =>
     setView((v) => {
       const d = new Date(v.y, v.m + delta, 1)

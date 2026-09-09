@@ -7,6 +7,7 @@
 // - 倒计时 countdown = 选分钟（15/25/45/60 预设 + 自定义 input）。
 import { useEffect, useRef, useState } from 'react'
 import type { Task, FocusSession } from '../../../shared/types'
+import { pad2 } from '../../../shared/utils/date'
 
 /** App 下发的「进行中专注会话」展示状态（与 App 侧共享的接口，字段必须完全一致） */
 export interface PomoDisplay {
@@ -22,9 +23,6 @@ export interface PomoDisplay {
 }
 
 /* ==================== 工具函数 ==================== */
-
-/** 数字补零为两位字符串 */
-const pad2 = (n: number): string => String(n).padStart(2, '0')
 
 /** 毫秒 → 剩余时间 MM:SS（向上取整秒：开始瞬间显示满额，结束瞬间恰好归零） */
 const fmtRemaining = (ms: number): string => {

@@ -1,20 +1,15 @@
 // 任务派生数据（RF-P1 自 App.tsx 原样迁入）。纯派生 hook：不接收 setDb、无副作用。
 import { useMemo } from 'react'
 import type { Db, Task } from '../../../shared/types'
+import { todayStr as dateTodayStr, localDateOf } from '../../../shared/utils/date'
 
 export function useTaskSelectors(db: Db, selectedId: string | null) {
   const selected = db.tasks.find((t) => t.id === selectedId) ?? null
   const selectedChildren = selected ? db.tasks.filter((t) => t.parentTaskId === selected.id) : []
   const tagMap = new Map(db.tags.map((t) => [t.id, t]))
-  // 本地日期（不能用 toISOString：那是 UTC 日期，北京时间 0-8 点会比本地早一天，
-  // 曾导致"今日到期任务进不了专注池"的时区 bug）
+  // 本地日期（不能用 toISOString：UTC 偏移问题见 shared/utils/date.ts 头注释；RF-P3c 收口改调 date.ts）
   const now = new Date()
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  // 专注记录的 startedAt 是 ISO(UTC)，也换算到本地日期再比对
-  const localDateOf = (iso: string) => {
-    const d = new Date(iso)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
+  const todayStr = dateTodayStr()
   const todaySessions = db.focusSessions.filter((s) => localDateOf(s.startedAt) === todayStr)
   const todayMinutes = todaySessions.reduce((sum, s) => sum + s.minutes, 0)
   const mainTasks = db.tasks.filter((t) => !t.parentTaskId)

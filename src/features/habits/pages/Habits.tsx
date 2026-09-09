@@ -10,14 +10,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { Habit, HabitRecord } from '../../../shared/types'
+import { fmtDate } from '../../../shared/utils/date'
 
 // 预设 emoji 图标组（新建表单 & 更换图标面板共用）
 const PRESET_ICONS = ['💧', '🏃', '📖', '🧘', '✍️', '🎯', '🥗', '😴', '🎧']
-
-// Date → 'YYYY-MM-DD'（本地时区，避免 toISOString 的 UTC 偏移问题）
-function fmtDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 // 右键菜单形态：root=主菜单 / icon=图标选择面板 / target=月目标输入
 interface MenuState {

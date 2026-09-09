@@ -15,6 +15,7 @@ import Recent7View from '../../features/tasks/components/Recent7View'
 import BoardView from '../../features/tasks/components/BoardView'
 import TaskDetailPanel from '../../features/tasks/components/TaskDetailPanel'
 import TaskDeleteConfirmModal from '../../features/tasks/components/TaskDeleteConfirmModal'
+import { useLocalStorage } from '../../shared/hooks/useLocalStorage'
 import { useTaskActions } from '../../features/tasks/hooks/useTaskActions'
 import { usePomodoro } from '../../features/pomodoro/hooks/usePomodoro'
 import { useHabits } from '../../features/habits/hooks/useHabits'
@@ -87,12 +88,14 @@ export default function MainArea({
   deletePeriod: ImportantDayActions['deletePeriod']
   reopenPeriod: ImportantDayActions['reopenPeriod']
 }) {
-  // 修正1：右栏宽度可拖拽调整（localStorage 持久化，260-480px；右栏私有布局态随组件迁出）
+  // 修正1：右栏宽度可拖拽调整（RF-P3c 修补卡：useLocalStorage 全权接管读写，260-480 合法域校验
+  // 经 sanitize 迁入（读时清洗非法值回退 320），组件内零裸 localStorage）
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [detailWidth, setDetailWidth] = useState<number>(() => {
-    const v = Number(localStorage.getItem('mh-detail-panel-width'))
-    return Number.isFinite(v) && v >= 260 && v <= 480 ? v : 320
-  })
+  const [detailWidth, setDetailWidth] = useLocalStorage<number>(
+    'mh-detail-panel-width',
+    320,
+    (v) => (Number.isFinite(v) && v >= 260 && v <= 480 ? v : 320),
+  )
   const detailDragRef = useRef<{ startX: number; startW: number } | null>(null)
   const startDetailResize = (clientX: number) => {
     detailDragRef.current = { startX: clientX, startW: detailWidth }
@@ -100,7 +103,6 @@ export default function MainArea({
       if (!detailDragRef.current) return
       const w = Math.max(260, Math.min(480, detailDragRef.current.startW - (ev.clientX - detailDragRef.current.startX)))
       setDetailWidth(w)
-      localStorage.setItem('mh-detail-panel-width', String(w))
     }
     const onUp = () => {
       detailDragRef.current = null
