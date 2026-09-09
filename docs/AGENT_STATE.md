@@ -36,3 +36,6 @@ tsc --noEmit 零错误 → npm run build → npm run dev 自测
 shared/types.ts=共享热区：两线都只做追加式修改
 ## 节俭令（2026-09-09）
 报告四项制（清单/diff摘要3-5行/✅❌/遗留）不贴代码；测试三件套；审查仅搬移迁移类；非阻塞 bug 进池
+
+## ⚠️ 撤退令（2026-09-09 用户终审）：双线废弃，回归严格单线串行
+线 B 已落 c8b0208（RF-Polish P1-P6）暂停；线 A 唯一在册（修 RF-Data-2 P0 首启选位返回值丢弃@electron/data/store.js initStore db:get → 重跑项 1 两分支 → 分层重建 Data-1/2/3 三笔）；工作区剩余=纯 A 改动。今后所有卡：开发→测试→审查(仅搬移/迁移)→手测→commit→下一卡
