@@ -64,11 +64,13 @@ P4/P5 开发一次跑完全卡再交付，不逐步对话确认；测试审查�
 | RF-Fix3a | 重要日运行时修复（阻塞 bug，诊断先行） | 1 | 中 | P3a 提交 |
 | RF-P3b | 布局抽取 L1/L2/MainArea | 1 | 中低 | P3a 提交 |
 | RF-Fix3c | 任务系统视图一致性统一（两段 commit，**待用户确认范围放行**） | 2 | 中高 | P3b 提交（66480d2） |
-| RF-P3c | 日期收口+useLocalStorage+L1 排序（**暂缓，排 Fix3c 后**） | 1 | 中低 | Fix3c 提交 |
-| **RF-Data** | **数据层合并卡**（原 P4+P5+P6a数据部分；3 commit：repository收口 / 多文件化+自定义位置+版本管理+开源隔离 / 书影旅游数据模型+占位；细目见「十八A」） | 3 | 高 | P3c 提交 |
-| RF-Moments | 书影/旅游完整 UI（原 P6a UI 部分；细案 v1 已在总集待批） | 1 | 中 | RF-Data 提交 |
-| RF-Clean | 死代码清扫（原 P6b；审查登记累计项） | 1 | 低 | RF-Data 提交 |
-| RF-Polish | bug+需求批量（原 Fix4；**P1-P6 线 B 并行中**；旧池 B/N/R 仍本卡） | 2 | 中 | 线B独立锚/RF-Clean 提交 |
+| RF-P3c | 日期收口+useLocalStorage+L1 排序 | 1 | 中低 | Fix3c 提交（✅ 6d9567b） |
+| **RF-Data** | **数据层合并卡**（原 P4+P5+P6a数据部分；3 commit：repository收口 / 多文件化+自定义位置+版本管理+开源隔离 / 书影旅游数据模型+占位；细目见「十八A」） | 3 | 高 | P3c 提交（✅ 39692f3/09d97ae/7f0ff27） |
+| RF-B1 | 子任务右栏独立编辑（Bug 池 B1 提前，低风险档） | 1 | 低 | RF-Data 提交 |
+| RF-Moments | 书影/旅游完整 UI（原 P6a UI 部分；细案 v1 已在总集待批） | 1 | 中 | RF-B1 提交 |
+| RF-Clean | 死代码清扫（原 P6b；审查登记累计项） | 1 | 低 | RF-Moments 提交 |
+| RF-Town-MVP | 小镇第一场景：Haruto 的房间陪伴（细案见「十八B」） | 1 | 中 | RF-Clean 提交 |
+| RF-Polish | bug+需求批量（原 Fix4；P1-P6 已由线 B 落 c8b0208；旧池 B/N/R 仍本卡） | 2 | 中 | RF-Town-MVP 提交 |
 | RF-Release | 设置中心五分区+更新通知（原 P7；前置门：细案待出）→v1.0.0 收官 | 1 | 中 | RF-Polish 提交 |
 
 ---
@@ -544,6 +546,33 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 
 ---
 
+## 十八B、RF-Town-MVP：小镇第一场景——Haruto 的房间陪伴（细案 v1，2026-09-09）
+
+> **范围铁律**：一个房间、一个角色、一个陪伴交互。V3 雏形不是 V3——房间背景替换/多场景/多角色/自由行走全部不做。
+
+**前提实况（规划层取证 2026-09-09）**：
+- data/town/ 三件套（scenes/character-state/activity-log）**RF-Data 未建**（当时卡面标注 town/ 后置）——本卡自建，兑现 P5 布局占位
+- 角色立绘 4 态**已就绪**：`WorkBuddy生成存储/myharuto美术资产/` haruto_idle/lean/press/night_press.png（含绿幕原片与抠图脚本）——拷贝处理入 public/assets/town/
+- **房间背景缺失**（用户所述「小镇场景」目录不存在）——默认方案 b：CSS 室内渐变占位（暖色地板+墙面色块+窗光），资产生成后替换（RoomStage 解耦天然支持）；用户选 a 则 HY4 生成后提供
+
+**数据（data/town/，本卡自建）**：
+- `scenes.json`：`[{id:'haruto-room', name:'Haruto的房间', bg:null|'/assets/town/room-bg.png', characters:['haruto']}]`
+- `character-state.json`：`{haruto:{state:'idle', updatedAt}}`——状态枚举 idle/talking/focusing（MVP 只渲染 idle 单图；state→立绘映射即 CharacterStage 接口雏形，PRD §3.7 解耦原则兑现第一版）
+- `activity-log.json`（jsonl）：陪伴事件 `{ts, type:'accompany', taskId, minutes}` 追加——**记忆库预留口子**（M6 记忆库可从本文件提取陪伴史）
+
+**组件与交互流**：
+- `features/town/{pages/TownPage.tsx, components/RoomStage.tsx, components/CharacterStage.tsx, hooks/useTown.ts}`
+- L1 town 图标：去置灰可进 TownPage（**保持锚底**，P3c 排序基建不动）
+- TownPage = RoomStage（背景+立绘，立绘点击热区）→ 点角色 → 任务选择浮层（**复用 focusPool 任务池**，同专注页口径）→ 选中 → `startPomo` 发起专注（**复用 usePomodoro 全局状态机**，PomodoroBar 浮条照常）→ **右栏挂 TaskDetailPanel**（MainArea 右栏路由加 town 分支挂载点=「右栏布局适配预留挂载点」兑现）
+- 专注完成 → focusSessions 正常记录（时长归并铁律自动生效）+ activity-log 追加陪伴事件
+- 角色动作接口预留：character-state 的 state 字段渲染层只读映射；记忆库口子：activity-log 结构化事件
+
+**验收**：L1 进房间（背景占位+立绘 idle）；点角色弹任务池→选任务→右栏出 TaskDetailPanel+番茄钟启动；专注完成统计+1 且 activity-log 出陪伴行；town 域无跨 feature import；新文件各 ≤500 行；全应用回归（L1 排序 chat/town 仍锚底）。
+**commit**：`feat(RF-Town-MVP): 小镇第一场景——Haruto 的房间陪伴`
+**回滚**：reset 到 RF-Clean 提交。
+
+---
+
 ## 十六、RF-Fix4：验收 bug 批量修复（P6b 后 / P7 与收官前）
 
 > **执行时点（2026-09-08 变更：P 序列提前双线并行）**：**P1-P6 视图批量提前为开发 Agent 2 线 B，与线 A（P4→P5 数据链）并行**——文件域互斥（线 B=features/tasks/** 视图层；禁碰 electron/src/data/App.tsx/SettingsModal/shared/utils/date.ts，规划层裁定两条：P2 逾期组排序随全局新维度链不留第二套、P3 置顶用可选字段 isPinnedGroup? 免自愈——DEV_RULES §2 例外须报告报备）。旧池（B1-B4/N1-N4/R2-R3）仍在 P6b 后执行。规划层统一串行 commit（两会话禁 git add/commit）。
@@ -730,6 +759,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.25 | **RF-Data/RF-Polish 深度核查七项通过**（剥离干净 c8b0208/MainArea 误报定性/手测终态代码零差异/verify:data 32-0）；**RF-B1 提前**（子任务右栏编辑，Bug 池 B1）；**RF-Town-MVP 细案入册**（用户 2026-09-08 要求流转丢失致规划层漏登，已承认——一个房间/一个角色/陪伴交互；取证：立绘 4 态已有、data/town 未建本卡自建、房间背景缺默认 CSS 占位）；**序列定稿：RF-B1→RF-Moments→RF-Clean→RF-Town-MVP→RF-Polish旧池→RF-Release→v1.0.0** |
 | v1.24 | P3c 验收提交 **6d9567b**（17 文件 +192/−136，M1 修补 sanitize 落地，测试+审查+手测全过）；**测试+审查合并单会话**（高风险档一个会话先测后审出一份合并报告）；**双线第二波铺开**：线 A=RF-Data 三 commit（开发 1）、线 B=RF-Polish-P1→P6（开发 2 复工） |
 | v1.23 | **RF-Data 合并卡**（P4+P5+P6a数据部分→3 commit 一次跑完；书影旅游完整 UI 拆出 RF-Moments 独立卡）；**P6b/Fix4/P7 更名 RF-Clean/RF-Polish/RF-Release**；总纲四条节俭令（报告四项制不贴代码/测试三件套轻量化/审查仅搬移迁移类[RF-Data-2 迁移专项例外]/非阻塞 bug 严格进池）；RF-Data 合并范围待用户确认后派发 |
 | v1.22 | **分级验收**（高/中/低三档，P4/P5 开发一次跑全卡）+ **docs/AGENT_STATE.md 机制**（新会话第一句读它，规划层阶段收尾更新 ≤50 行）；P3c 修补（detailWidth 双向断裂）适用低风险档 |
