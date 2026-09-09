@@ -38,6 +38,7 @@ MyHaruto/
     ├── main.tsx             # React 挂载入口
     ├── App.tsx              # ★ 主帅文件：数据 hooks 编排 + nav API（路由四件套成套同步）
     │                        #   + 布局组合（L1/L2/MainArea/右栏/弹窗接线）
+    ├── features/ai/         # （M5/M6 待建）chat/agent/memory[useMemoryRecall+useMemoryWrite/entityTag/memoryCondense]/persona
     ├── global.d.ts          # window.myharuto 类型（db/data 五通道）
     ├── data/repository.ts   # ★ 渲染端唯一数据入口 loadAll/persist（StorageDriver 接口；M6 记忆签名届时落）
     ├── data/types.ts        # 数据层类型（DataInfo 等）
