@@ -613,9 +613,9 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 
 > **规划层深度分析结论（2026-09-09）**：置顶三轮修不好的根源=语义级错位——P3 实现"排序分区语义"，v3 定义"标记+日期驱动组级语义"。本清单是语义重设计，不是回归修复。**冻结规则：A2/A3 定性回报前不进入 A1/A4 实施。**
 
-- **A1 置顶语义统一+双失效修复**（语义 v3，确认点 1-2 待用户批）：
-  - isPinnedGroup（置顶该组）：写标记；看板读→父组浮同层首；横板不读
-  - isPinnedToday（置顶今天）：写标记+改子任务有效日期为今天；横板读→该组在今天区块浮顶；取消→子任务日期回设父任务日期；手动改日期→自动清 isPinnedToday；过今天标记保留不生效；多组组间排序=父优先级>父日期升序
+- **A1 置顶语义统一+双失效修复**（语义 v3 终版，2026-09-09 用户终审）：
+  - isPinnedGroup（置顶该组）：写**父任务**标记（子任务右键入口保留，写库 target=parentTaskId，父子共用 action）；看板读→父组浮同层首；横板不读；取消=父标记清空整组回落
+  - isPinnedToday（置顶今天）：双入口（子任务=改子任务日期为今天；父任务=改自身日期）；横板读→组在今天区块浮顶；子任务取消→日期回设父任务日期；父任务取消→仅清标记日期不回写；手动改日期→自动清 isPinnedToday（updateTask 守卫）；过今天标记保留不生效；多浮首组间按 taskSort 相对序
   - 现状横板/看板均失效——先 grep 根因（写库通路+双视图消费点）回报后再改码
 - **A2 L3 无法新建分组**：先定性（回归 or 从未实现），grep 写库通路+UI 事件链，不得直接改 → **定性卡已派**
 - **A3 看板组内新建任务缺「创建」按钮**：对照横板 NewTaskBar，两处组件路径对照判双轨，不得直接改 → **定性卡已派**
@@ -629,11 +629,11 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 **裁定 3（备案）**：父任务 done+聚合进折叠区后 isPinnedGroup 浮首不生效（折叠区自有顺序）；多浮首组间按 taskSort 相对序
 **裁定 4（实现要点）**：dueDate 变更清 isPinnedToday 的守卫收口在 updateTask（patch 含 dueDate 变更且不含显式 isPinnedToday 时自动清）——一层守卫覆盖全部 4 条改日期通路（DatePickerModal/菜单/行内 input/未来拖拽），禁散点补丁；置顶今天动作显式写双字段不受守卫影响
 
-**⚠️ 验收标准替换（原"第 3 个子任务跳组内第一"系旧语义与 v3 冲突，作废）**：
-- 置顶该组：父任务 P 右键→置顶该组→P 组看板堆叠区浮首；再对 Q 置顶→P/Q 按 taskSort 相对序；取消 P→Q 浮首
-- 置顶今天：子任务 S 右键→置顶今天→S.dueDate=今天+标记→**整组（父+S）进今天区块**；取消→S 日期回设父日期组回落；手动改 S 日期→标记自动清
+**⚠️ 验收标准终版（2026-09-09 用户终审，替换全部旧版）**：
+- 置顶该组：①父任务 P 右键→置顶该组→P 组看板堆叠区浮首 ②再对父任务 Q 置顶→P/Q 按 taskSort 相对序 ③取消 P→仅 Q 浮首 ④**子任务 S 右键→置顶该组→S 所属父组浮首（写父任务标记）** ⑤子任务 S 右键→取消置顶该组→父任务标记清空组回落
+- 置顶今天：①子任务 S 右键→置顶今天→S.dueDate=今天+isPinnedToday→**整组（父+S）进今天区块** ②取消→S 日期回设父日期、组回落原区块 ③手动改 S 日期→标记自动清（经 updateTask 守卫）
 
-**A1 实施连带清单（v3 完整改动面）**：①taskMenu 子任务上下文移除「置顶该组」、父任务上下文保留/新增 ②TaskCard:65/ListTaskCard:86 children 去 pinnedGroupFirst 改 filter.sort(taskSort) ③Tasks:130 去 pinnedGroupFirst（横板不读）④BoardColumn:55 保留（吃父任务 isPinnedGroup）⑤useTaskActions：置顶今天 action+取消 action（回设）+dueDate 守卫 ⑥子任务残留 isPinnedGroup 标记无害化不清洗
+**A1 实施连带清单（v3 终版 7 项，用户 2026-09-09 终审）**：①taskMenu：子任务入口**保留**，「置顶该组/取消」写库 target=parentTaskId，父子共用 action（禁两套逻辑）②TaskCard:65 children 去 pinnedGroupFirst 改 filter.sort(taskSort) ③ListTaskCard:86 同上 ④Tasks:130 去 pinnedGroupFirst（横板不读）⑤BoardColumn:55 保留（吃父任务 isPinnedGroup 驱动组浮首）⑥useTaskActions：dueDate 变更守卫（收口 updateTask）+置顶今天/取消两 action（含回设+父 target）⑦子任务残留 isPinnedGroup=true 无害化不清洗
 
 ---
 
@@ -831,6 +831,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.32 | **A1 语义终版（用户终审）**：子任务「置顶该组」入口**保留**，写库 target=parentTaskId 父子共用 action（禁两套逻辑）；验收标准终版 5+3 条（含子任务入口写父标记/取消父标记清空）；A1 连带清单终版 7 项；冻结与执行顺序照旧（A2/A3 定性先行） |
 | v1.31 | **A1/A4 对抗性审查（用户令"严肃残酷"，3 确认点批准+2 缺口裁定+2 备案）**：缺口 1=父任务入口取消置顶今天不回写日期（已裁定）；缺口 2=换父保持置顶（已裁定）；裁定 3=聚合折叠区不浮首；裁定 4=dueDate 守卫收口 updateTask（禁散点）；**旧验收"子任务跳组内第一"与 v3 冲突作废替换**；A1 连带清单六项（菜单/children/Tasks130/BoardColumn/actions/残留无害化） |
 | v1.30 | **RF-B1 收尾 v3 需求文档归档（用户手测深度反馈，总文档 v3）**：规划层深度分析=置顶三轮修不好的根源是**语义级错位**（P3 排序分区语义 vs v3 标记+日期驱动组级语义），非实现 bug；A1 置顶语义重设计（isPinnedToday=改日期驱动组位置+回设+清标记联动；isPinnedGroup=看板父组浮首）、A4 横板组单点显示（组位置=最近未过期子任务日期+整组跳日期）；A2/A3 定性卡已派（冻结：定性前不进 A1/A4）；RF-Polish 池增 Pol1-8（与 A1/A4 联动标注）；**RF-H1 历史快照立项**（v1.0 前插卡：RF-Clean 后/Town-MVP 前，独立大工程）；十八D 已裁定规则备案节；序列更新 RF-Clean→RF-H1→RF-Town-MVP |
 | v1.29 | **RF-B1-P0-FIX-FINAL 批准件（规划层审批位，卡转开发会话执行）**：根因双确认（置顶乱飞=Tasks:130/TaskCard:65-67 缺 taskSort 预排[现场实锤]；角标不归纳=三份 minutesOf 副本只算自身[useTaskSelectors/Today/BoardView 实锤，角标主链=useTaskSelectors]）；**裁定 1 排序统一采内聚式**（pinnedGroupFirst 内聚 taskSort 预排=单点基线，五消费点自动统一，偏离用户"逐点补 sort"字面但结果更强，供否决）；**裁定 2 计时收敛采方案乙**（useTaskSelectors.minutesOf 改递归版自身+子孙，Today/BoardView 两副本删除改用统一链，§10 收敛非重构）；迁移语义=focusSessions 不动，minutesOf 随 parentTaskId 重算天然满足 |
