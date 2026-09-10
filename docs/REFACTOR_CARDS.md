@@ -622,6 +622,19 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 - **A4 横板父任务组单点显示**：组整体单点出现，位置=最近未过期日期区块；组内按有效日期升序（横看一致）；跳日期时机=零点后首次渲染+切视图重算，不实时跳；未逾期子任务连带父任务、已完成子任务整体移动；逾期红字沿用现有链禁止重写；整组全部子任务逾期才进逾期区；改日期不再逾期自动恢复原色（现有链沿用）
 - **执行顺序**：A2/A3 定性回报 → A1/A4 落地 → 三关+四场景机械测试 → 手测复现 → 回报裁定 commit+push
 
+### v1.31 对抗性审查补充（规划层红队推演，用户批准后生效；3 确认点已批：子任务入口取消✅/双入口✅/父 dueDate 参与位置计算✅）
+
+**缺口 1（已裁定）**：父任务入口「置顶今天」取消=仅清 isPinnedToday 标记、**日期保留不回写**（父任务日期是显式用户数据；与"手动改日期清标记"同一逻辑）
+**缺口 2（已裁定）**：子任务换父任务后 isPinnedToday 与今天日期**保持**，回设基准自动变为新父任务日期
+**裁定 3（备案）**：父任务 done+聚合进折叠区后 isPinnedGroup 浮首不生效（折叠区自有顺序）；多浮首组间按 taskSort 相对序
+**裁定 4（实现要点）**：dueDate 变更清 isPinnedToday 的守卫收口在 updateTask（patch 含 dueDate 变更且不含显式 isPinnedToday 时自动清）——一层守卫覆盖全部 4 条改日期通路（DatePickerModal/菜单/行内 input/未来拖拽），禁散点补丁；置顶今天动作显式写双字段不受守卫影响
+
+**⚠️ 验收标准替换（原"第 3 个子任务跳组内第一"系旧语义与 v3 冲突，作废）**：
+- 置顶该组：父任务 P 右键→置顶该组→P 组看板堆叠区浮首；再对 Q 置顶→P/Q 按 taskSort 相对序；取消 P→Q 浮首
+- 置顶今天：子任务 S 右键→置顶今天→S.dueDate=今天+标记→**整组（父+S）进今天区块**；取消→S 日期回设父日期组回落；手动改 S 日期→标记自动清
+
+**A1 实施连带清单（v3 完整改动面）**：①taskMenu 子任务上下文移除「置顶该组」、父任务上下文保留/新增 ②TaskCard:65/ListTaskCard:86 children 去 pinnedGroupFirst 改 filter.sort(taskSort) ③Tasks:130 去 pinnedGroupFirst（横板不读）④BoardColumn:55 保留（吃父任务 isPinnedGroup）⑤useTaskActions：置顶今天 action+取消 action（回设）+dueDate 守卫 ⑥子任务残留 isPinnedGroup 标记无害化不清洗
+
 ---
 
 ## 十六、RF-Fix4：验收 bug 批量修复（P6b 后 / P7 与收官前）
@@ -818,6 +831,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 | v1.16 | 终验尾巴：**四 modal Escape 统一补齐**（DatePicker/TaskDeleteConfirm 零 Escape、SubTag/Settings 仅 input 局部监听——统一改容器级 useEffect+window keydown） |
 | v1.17 | Fix3c-2 验收提交 **0564917**（22 文件 +868/−745，Bug5+弹层互斥双向显式化+dateRow 回归修复+Escape 补齐全落）；**产品维度定位定稿写入三文档**（PRD §2.1/DEV_RULES §10 末条/README：横板=时间维度、看板=项目进展维度、排序共用一套）；流程沉淀：测试冒烟新规（薄壳化/重构卡必逐个点可点击元素）、Fix4 池增 N4 可选项（嵌套 Esc 同关两层→全局弹层栈）、开发开工消息新增杀净旧 Electron 硬性步骤。**Fix3c 全卡闭环，P3c 复位** |
 | v1.18 | **Fix4 池重构**：用户钦定优先序列 P1-P6 入池（创建体验/优先级变色+排序改版/置顶拆分/过期红/meta 重排/未分类 1/3），旧池 B/N 项归类其后；排序规则变更定稿（优先级>日期时间>创建时间——取证证实 taskSort 现行首维=日期系真实实现变更，横板逾期双胞胎比较器顺带收编）；置顶双轨定稿（isPinnedToday 保留+「置顶该组」新增，独立字段）；PRD §2.1 整合移入 §3.1 任务章节「视图定位」（含共享同源任务数据句），DEV_RULES §10 补排序维度链 |
+| v1.31 | **A1/A4 对抗性审查（用户令"严肃残酷"，3 确认点批准+2 缺口裁定+2 备案）**：缺口 1=父任务入口取消置顶今天不回写日期（已裁定）；缺口 2=换父保持置顶（已裁定）；裁定 3=聚合折叠区不浮首；裁定 4=dueDate 守卫收口 updateTask（禁散点）；**旧验收"子任务跳组内第一"与 v3 冲突作废替换**；A1 连带清单六项（菜单/children/Tasks130/BoardColumn/actions/残留无害化） |
 | v1.30 | **RF-B1 收尾 v3 需求文档归档（用户手测深度反馈，总文档 v3）**：规划层深度分析=置顶三轮修不好的根源是**语义级错位**（P3 排序分区语义 vs v3 标记+日期驱动组级语义），非实现 bug；A1 置顶语义重设计（isPinnedToday=改日期驱动组位置+回设+清标记联动；isPinnedGroup=看板父组浮首）、A4 横板组单点显示（组位置=最近未过期子任务日期+整组跳日期）；A2/A3 定性卡已派（冻结：定性前不进 A1/A4）；RF-Polish 池增 Pol1-8（与 A1/A4 联动标注）；**RF-H1 历史快照立项**（v1.0 前插卡：RF-Clean 后/Town-MVP 前，独立大工程）；十八D 已裁定规则备案节；序列更新 RF-Clean→RF-H1→RF-Town-MVP |
 | v1.29 | **RF-B1-P0-FIX-FINAL 批准件（规划层审批位，卡转开发会话执行）**：根因双确认（置顶乱飞=Tasks:130/TaskCard:65-67 缺 taskSort 预排[现场实锤]；角标不归纳=三份 minutesOf 副本只算自身[useTaskSelectors/Today/BoardView 实锤，角标主链=useTaskSelectors]）；**裁定 1 排序统一采内聚式**（pinnedGroupFirst 内聚 taskSort 预排=单点基线，五消费点自动统一，偏离用户"逐点补 sort"字面但结果更强，供否决）；**裁定 2 计时收敛采方案乙**（useTaskSelectors.minutesOf 改递归版自身+子孙，Today/BoardView 两副本删除改用统一链，§10 收敛非重构）；迁移语义=focusSessions 不动，minutesOf 随 parentTaskId 重算天然满足 |
 | v1.28 | **RF-Data 自定义位置加固（RF-B1 手测暴露的深度审计，用户令全量排查）**：①三 P0 修复（P0-1 右栏日期=Panel 未透传 onEditDate+MainArea 未挂 DatePickerModal[非 stopPropagation]；P0-2 Stats 日视图子任务直配[旧 spec F4 语义]→三视图统一归并[用户令]；P0-3 看板子任务置顶=B1 子卡右键冒泡修复已覆盖[终态验证]）②**自定义位置加固**：resolveRoot 三态（config 损坏→阻断提示/自定义目录丢失→提示不静默重建/changeDataDir 嵌套+仓库内拒绝）——根因=此前 config 损坏静默回退默认根会加载迁移残留（"数据回到过去"事故根源）；四场景动态测试全过（config 正常/损坏/删除/目录丢失）③dev 冒烟受阻=实例占用，运行验证转用户手测；④E 盘活数据归并验证 7/7 子任务会话正确（3 条经 master 链=F4 铁律）⑤DEV_RULES §2 数据根解析约定（禁硬编码 %APPDATA%）⑥**规划层双向铁律**：不实声称指控也须先取证（RF-Data 三笔误判登记修正） |
