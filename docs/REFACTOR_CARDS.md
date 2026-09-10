@@ -635,6 +635,21 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
   - Commit 2 `feat(RF-B1): 收尾——置顶语义 v3+组单点显示+A2/A3`：A1-A4 增量（含同文件二次改动），完工后落
   - 手测一轮覆盖两笔内容（A1-A4 完工后统一手测），通过后按序落——历史边界清晰+零拆分手术
 
+### 新开发 Agent 上岗补充任务（2026-09-11 定稿，口径甲已拍板；随补交报告一并交付）
+
+**任务 1 countOf 口径落码（结构性要求·最核心）**：countOf('today') 必须复用 Today 页今天区分组结果——**共用同一 selector/消费点，禁独立再算 groupPosition**（原 bug 根子=countOf 与页面各算各的）。
+- 实现：useTaskSelectors 新增 todayRoots useMemo（组位置=today 的根任务集，调 positionDateOf；**today 进 useMemo 依赖数组与否报告明说**——跨零点重算依赖此）；countOf('today')=todayRoots 各组 treeOf 成员总数之和（防环）；Today 页今天区消费同一 todayRoots——一处算两处用
+- **口径（已拍板甲=卡片数）**：countOf('today')=今天区组卡数（每父卡计 1）；tooltip=「今天 N 个任务（含子任务 M 条）」N=组卡数 M=区内条目数双信息
+- L2Sidebar「今天」数字旁加 tooltip（title 属性实时值）
+- 附带清点：grep countOf 其他分支（'all'/tagId）旧 isPinnedToday 残留，有则同步修并列报告
+
+**任务 2 ListTaskCard:8 死 import 删**：import 改 `import { taskSort } from '../utils/taskSort'`（pinnedGroupFirst 已无消费）；删后 tsc 零错误确认
+
+**任务 3 v1.32 八条验收对照表**（随补交报告交用户，**两态格式禁混用**）：
+- 已实点条目（置顶该组①-⑤/置顶今天①②）→「复验步骤」（用户走一遍与证据一致即过）
+- 未实点条目（置顶今天③守卫）→「首次手测步骤」（操作路径 A→B→C 看到 X 算过）
+- 表列：条目|实点状态|证据索引|手测步骤|通过标准|反例；未完成清单（四场景机械+双链 8 点）一并入表
+
 ### v1.31 对抗性审查补充（规划层红队推演，用户批准后生效；3 确认点已批：子任务入口取消✅/双入口✅/父 dueDate 参与位置计算✅）
 
 **缺口 1（已裁定）**：父任务入口「置顶今天」取消=仅清 isPinnedToday 标记、**日期保留不回写**（父任务日期是显式用户数据；与"手动改日期清标记"同一逻辑）
