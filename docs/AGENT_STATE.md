@@ -1,44 +1,32 @@
-# AGENT_STATE — 当前状态速览（新会话第一句话读我；规划层每阶段收尾更新，≤50 行）
+# AGENT_STATE — 当前状态速览（新会话第一句读我；规划层每阶段收尾更新，≤50 行）
 
-## 项目与锚点
-MyHaruto（Electron+React18+TS strict+Tailwind）重构线进行中。
-HEAD=cbc8c3d（RF-Data+RF-Polish 六笔已推送）｜工作区干净｜tag：v0.1.0=refactor-start=7b4978f、fix3c-pre=88907d3
+## 项目与锚点（2026-09-10 快照）
+MyHaruto（Electron+React18+TS strict+Tailwind）重构线。HEAD=bda613b（docs v1.40）；
+工作区=RF-B1 收尾阶段 2 施工中 WIP 17 项（16M+groupPosition.ts）——**接力会话直接续作勿重做**。
+tag：v0.1.0=refactor-start=7b4978f、fix3c-pre=88907d3｜全部已推送。
 
-## 重构进度（总集 docs/REFACTOR_CARDS.md v1.25）
-✅ P1/P2a/P2b/P3a/P3b/P3c/Fix1/2/3/3a/3c(1+2)/RF-Data(1-3)/RF-Polish-P1~P6 ｜ ⏳ 单线待派：RF-Moments（细案待批）
-→ RF-Moments/RF-Clean/RF-Polish旧池/RF-Release/v1.0.0
-（命名映射：P6b=RF-Clean，Fix4=RF-Polish，P7=RF-Release；Fix4-P1~P6=RF-Polish 线 B 并行中）
+## 进度
+✅ P1~P3c/Fix1-3/3a/3c(1+2)/RF-Data(1-3)/RF-Polish-P1~P6 ｜ ⏳ **RF-B1 收尾阶段 2 施工中（执行卡 v3.2）**
+→ 之后：RF-Polish 旧池（🔴B1 排序打头）→ RF-Clean → RF-H1 → RF-Town-MVP（3D）→ RF-Moments → RF-Release → v1.0.0
 
-## 当前会话分工（双线并行期）
-- 规划（本会话）：出卡/串行 commit/盯门；每阶段收尾更新本文件
-  ⚠️ 会话身份纯净（2026-09-09 定）：规划层永不代跑测试/运行验证；开发自测≠验收
-- 开发 Agent 1：RF-Data 三笔已交付（39692f3/09d97ae/7f0ff27）；下一卡 RF-Moments 待批
-- 开发 Agent 2：RF-Polish-P 序列已交付（c8b0208）；待命
-- 测试+审查：合并单会话（测试→审查→一份合并报告）
-- ⚠️ 双线模式已废弃（2026-09-09 用户终审），严格单线串行
-- 测试/审查：按分级验收表召唤
+## 会话分工（单线+身份纯净）
+- 规划（本会话）：出卡/串行 commit/盯门；**永不代跑测试/运行验证**
+- 开发会话：RF-B1 收尾阶段 2（执行卡 v3.2=总集 v1.40 后的现行版）
+- 测试+审查：合并单会话，按 v3 证据标准（截图/录屏+反例）复核
 
-## 分级验收（2026-09-08 定）
-高风险（P4/P5）：开发→测试→审查→手测→commit
-中风险（P6a/P6b）：开发→测试→手测→commit（免审查）
-低风险（小修补）：开发→手测→commit（免测试审查）← P3c 修补适用
+## RF-B1 收尾核心语义（详见总集「十九」+「十八D」）
+- 置顶该组（isPinnedGroup）：写**直接父任务**标记（三层同理）；看板父组浮首；横板不读
+- 置顶今天（isPinnedToday）：双入口写标记+日期=今天；子任务取消回设直接父日期；父任务取消仅清标记；手动改日期自动清（updateTask 守卫）
+- A4 组单点：组位置=最近未过期日期（父参与+未完成子参与+已完成跳过）；groupPosition 方案甲=纯 positionDate
+- A2/A3：核对式（已实点通过，核对未被覆盖）
 
-## 双线纪律
-- 开发只改文件，禁 git add/commit；规划层按核定清单精确 add 串行落 commit
-- 文件域：线 A=electron/src.data/App数据useEffect/SettingsModal；线 B=features/tasks/**
-- dev 窗口令牌制：实测前排他占用，用完优雅退出；开工前杀净旧实例禁双开
-- 冲突/卡与实际不符：停手回报规划层，禁现场变通
-
-## 三关（每卡必过）
-tsc --noEmit 零错误 → npm run build → npm run dev 自测
+## 铁律速查（违反=打回）
+- 停手不 commit 不 add；冲突/卡与实际不符→停手回报规划层
+- 施工前反问：先答全消费面再动码；发现卡漏先上报禁盲做
+- 接口重构：回归所有既有消费点；批量替换后 Read 整段复核
+- 承诺必须同次落盘自查（认领≠落地——已两起）
+- 第零步清场：按端口清 vite 孤儿+electron 优雅退出禁 taskkill；禁双开
+- 工作区边界 §11：两目录树外禁搜索读写（%APPDATA%/MyHaruto 数据例外）；数据读取先读 config.json（默认根有迁移残留非活数据）
 
 ## 下一步
-派 RF-B1（低风险档：开发→手测→commit）；RF-Moments 细案待用户批；RF-Town-MVP 房间背景资产缺口（默认 CSS 占位）
-## 工作区边界（DEV_RULES §11）
-工作目录固定 D:\Software\Zcode_appdata 与 D:\Software\Zcode；两目录外禁搜索/读写，需要外部文件先报告路径征得用户同意；允许联网
-
-## 节俭令（2026-09-09）
-报告四项制（清单/diff摘要3-5行/✅❌/遗留）不贴代码；测试三件套；审查仅搬移迁移类；非阻塞 bug 进池
-
-## ⚠️ 撤退令（2026-09-09 用户终审）：双线废弃，回归严格单线串行
-线 B 已落 c8b0208（RF-Polish P1-P6）暂停；线 A 唯一在册（修 RF-Data-2 P0 首启选位返回值丢弃@electron/data/store.js initStore db:get → 重跑项 1 两分支 → 分层重建 Data-1/2/3 三笔）；工作区剩余=纯 A 改动。今后所有卡：开发→测试→审查(仅搬移/迁移)→手测→commit→下一卡
+开发交付（四项制+证据）→ 测试合并会话 → 用户手测 → 授权 → 规划层串行 commit → RF-B1 闭环 → RF-Polish 旧池
