@@ -648,7 +648,7 @@ ImportantDays 死 Toggle 组件；todayStr re-export 残留确认消除；PLACEH
 ### 新开发 Agent 上岗补充任务（2026-09-11 定稿，口径甲已拍板；随补交报告一并交付）
 
 **任务 1 countOf 口径落码（结构性要求·最核心）**：countOf('today') 必须复用 Today 页今天区分组结果——**共用同一 selector/消费点，禁独立再算 groupPosition**（原 bug 根子=countOf 与页面各算各的）。
-- 实现：useTaskSelectors 新增 todayRoots useMemo（组位置=today 的根任务集，调 positionDateOf；**today 进 useMemo 依赖数组与否报告明说**——跨零点重算依赖此）；countOf('today')=todayRoots 各组 treeOf 成员总数之和（防环）；Today 页今天区消费同一 todayRoots——一处算两处用
+- 实现：useTaskSelectors 新增 todayRoots useMemo（组位置=today 的根任务集，调 positionDateOf[**不含折叠区已完成根卡**]；**today 进 useMemo 依赖数组与否报告明说**——跨零点重算依赖此）；countOf('today')=todayRoots 各组 treeOf 成员总数之和（防环）；Today 页今天区消费同一 todayRoots——一处算两处用
 - **口径（已拍板甲=卡片数+X 定死，2026-09-11）**：countOf('today')=**今天区块根任务卡数（X，不含折叠区已完成根卡 Y）**——折叠区是已完成收纳（不需要做），计入会虚高；每父卡计 1；tooltip=「今天 N 个任务（含子任务 M 条）」N=组卡数 M=区内条目数双信息。一句话钉死：**countOf('today') = 今天区块的根任务卡数，折叠区不计**
 - L2Sidebar「今天」数字旁加 tooltip（title 属性实时值）
 - 附带清点：grep countOf 其他分支（'all'/tagId）旧 isPinnedToday 残留，有则同步修并列报告
