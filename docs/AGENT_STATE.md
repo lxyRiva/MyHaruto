@@ -6,8 +6,8 @@ MyHaruto（Electron+React18+TS strict+Tailwind）重构线。HEAD=bda613b（docs
 tag：v0.1.0=refactor-start=7b4978f、fix3c-pre=88907d3｜全部已推送。
 
 ## 进度
-✅ P1~P3c/Fix1-3/3a/3c(1+2)/RF-Data(1-3)/RF-Polish-P1~P6 ｜ ⏳ **RF-B1 收尾阶段 2 施工中（执行卡 v3.2）**
-→ 之后：RF-Polish 旧池（🔴B1 排序打头）→ RF-Clean → RF-H1 → RF-Town-MVP（3D）→ RF-Moments → RF-Release → v1.0.0
+✅ P1~P3c/Fix1-3/3a/3c(1+2)/RF-Data(1-3)/RF-Polish-P1~P6 ｜ ⏳ **RF-B1 收尾阶段 2 补测+T1 Toast 施工中（执行卡 v3.2+批复修正）**
+→ 之后：RF-B1 闭环 → RF-Polish 旧池 → RF-Clean → RF-H1 → RF-Town-MVP → RF-Moments → RF-Release → v1.0.0
 
 ## 会话分工（单线+身份纯净）
 - 规划（本会话）：出卡/串行 commit/盯门；**永不代跑测试/运行验证**
@@ -29,4 +29,4 @@ tag：v0.1.0=refactor-start=7b4978f、fix3c-pre=88907d3｜全部已推送。
 - 工作区边界 §11：两目录树外禁搜索读写（%APPDATA%/MyHaruto 数据例外）；数据读取先读 config.json（默认根有迁移残留非活数据）
 
 ## 下一步
-开发交付（四项制+证据）→ 测试合并会话 → 用户手测 → 授权 → 规划层串行 commit → RF-B1 闭环 → RF-Polish 旧池
+开发补交报告（含横板反例截图/手测清单/真实原因+T1 Toast）→ 测试合并会话 → 用户手测 → 授权 → 规划层串行 commit → RF-B1 闭环 → RF-Polish 旧池
