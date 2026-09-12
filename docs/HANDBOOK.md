@@ -1,47 +1,63 @@
-# MyHaruto 新 Agent 上手指南（HANDBOOK）
+【文件】HANDBOOK.md
+【用途】新人上手——第一次来这项目怎么活
+【读】全员
+【写】仅规划层
+【上游】无（根级入口）
+【下游】PROJECT_ROADMAP.md / 各角色 rules
+【更新】极少（半年 or 重大架构变化时）
+【最后更新】YYYY-MM-DD
 
-> 你（新 Agent/开发者）接手的是一个已完成 M1-M4、正待开发 M5（AI 灵魂）的 Windows 桌面应用。
-> 按以下六步走，20 分钟进入战斗状态。
+# MyHaruto 新 Agent 上手指南
 
-## 六步上手
+## 一、项目一句话
+人机恋 × 日程管理 × 陪伴成长的 Windows 桌面单机 App。
 
-**第1步·读文档（按序）**
-1. `docs/PRD.md` —— 产品是什么、每个功能长什么样（权威功能规格）
-2. `docs/TECH.md` —— 怎么跑、数据在哪、关键机制、开发铁律
-3. `docs/STRUCTURE.md` —— 每个文件是干嘛的
-4. `PROJECT_SPEC.md` —— 需求基线（历史存档，冲突以 PRD.md 为准）
+## 二、去哪找导航
+→ 见 PROJECT_ROADMAP.md（项目路线图：M 阶段 + 卡清单）
+本文件不重复路线图内容。
 
-**第2步·跑起来**
+## 三、各角色上手路径（先看我怎么走）
+- 开发会话：
+  HANDBOOK → PROJECT_ROADMAP → AGENT_STATE → 当前卡 → DEV_RULES → 开工
+- 测试/审查会话：
+  HANDBOOK → PROJECT_ROADMAP → AGENT_STATE → 当前卡 → TEST_REVIEW_RULES → 开工
+- 规划会话：
+  HANDBOOK → PROJECT_ROADMAP → VERSION_MIGRATION_v1 → AGENT_STATE
+  → CARD_PROTOCOL → PLANNER_RULES → 开工
+- 用户：
+  HANDBOOK → WORKFLOW_SOP.md
+
+## 四、必读文件（就这几份，其他不用读）
+1. PROJECT_ROADMAP.md — 去哪（导航）
+2. CARD_PROTOCOL.md — 卡怎么管（规则）
+3. 本角色 rules：
+   - 开发 → DEV_RULES.md
+   - 测试/审查 → TEST_REVIEW_RULES.md
+   - 规划 → PLANNER_RULES.md
+4. AGENT_STATE.md — 现在在哪（状态）
+5. 当前卡文件 — 做什么（执行）
+
+## 五、读后回执机制（必须）
+开工第一次读完上列文件后，在开工消息里回执一次：
+「已读：[HANDBOOK] [PROJECT_ROADMAP] [AGENT_STATE] [当前卡 M2-V13]
+当前卡任务：T1-T5
+当前状态：T5 未完成
+开工。」
+
+回执一次即可。本会话后续不再重读全文。
+
+## 六、记忆保持机制（会话内）
+- 会话内：读完 + 回执后，本会话不再重复读全文。
+  需要引用时只引用段落编号，如「按 DEV_RULES §2 数据访问」。
+- 上下文丢失时：如出现以下信号，重读关键文件（DEV_RULES / CARD_PROTOCOL）：
+  - 对话超过 30 轮
+  - 用户明确说"重新读"
+  - 自己感觉规则记不清了
+- 跨会话：新会话必须重新读（上下文独立）。
+
+## 七、跑起来
 ```bash
 cd /d D:\Software\Zcode_appdata\.zcode\workspace\default\MyHaruto
-npm install        # 如果 node_modules 不存在
-npm run dev        # 开发模式，改代码热更新
+npm install    # 如 node_modules 不存在
+npm run dev    # 开发模式
 ```
-
-**第3步·明确本次任务**：产品主人会在对话里给出目标（如"开发 M5 聊天页"）。**有歧义先问清再动手**——本项目曾因理解偏差返工多轮。提问要具体到"是/否"或选项。
-
-**第4步·开发**
-- 改哪个文件看 STRUCTURE.md 的职责划分；**App.tsx 和 Today.tsx 是热区**，动它们要整读再改
-- 遵守 TECH.md「开发铁律」六条（tsc 三关 / D盘路径 / 禁 prompt / 左右键规范 / 禁 emoji / 文件边界）
-
-**第5步·验证+提交**
-```bash
-"C:\Program Files\nodejs\node.exe" node_modules\typescript\bin\tsc --noEmit   # 零错误
-npm run build                                                                 # 成功
-git add -A && git commit -m "feat: 一句话说清改了什么"
-```
-
-**第6步·交验**：`npm run build` 后用 `node_modules\electron\dist\electron.exe .`（或桌面快捷方式）打开给产品主人验收。**改一个验一个**，不攒批。
-
-## 协作规范（与产品主人）
-
-- 她是纯小白+强执行力：解释用大白话+比喻，代码细节不必展开，但**改动清单必须说清**
-- 她会高强度验收并给编号问题清单：逐条对齐理解再修（多轮提问确认），不许自以为懂
-- 审美要求高：极简 Loft 风、微动效、拒绝丑和毛坯感；设计稿由 workbuddy 出（D:\Software\WorkBuddy生成存储\）
-- 验收节奏：改一个→她验一个→git 提交一次
-
-## 当前挂起事项（接手先看）
-
-1. **M5 AI 聊天**（下一仗）：需要产品主人注册智谱 API Key（open.bigmodel.cn）；设计稿任务2/3（聊天页/人物主页）workbuddy 生成中；实现规格见 PRD.md §3.7
-2. **GitHub 推送**：本地 16+ 提交已就绪，推送受网络阻断（Connection was reset）——主人有梯子/热点时在 GitHub Desktop 点 Push origin 即可（仓库已存在：github.com/WillaLin-ux/MyHaruto，私有）
-3. 次要遗留：番茄专注页重开按钮的"同参数重启"在正计时模式语义待定；习惯每月/每周/每天重复仅 UI 未入 types；重要日按农历每年重复的公历换算提醒未做
