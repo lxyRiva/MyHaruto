@@ -1,101 +1,185 @@
-# MyHaruto 项目文件结构说明
+【文件】STRUCTURE.md
+【用途】项目结构设计说明书——解释目录组织原则与关键位置
+【读】全员
+【写】仅规划层
+【上游】PROJECT_ROADMAP.md（时间/任务导航）
+【下游】TECH.md（技术细节）
+【更新】目录结构或组织原则变化时
+【最后更新】2026-09-13
 
-> 项目根：`D:\Software\Zcode_appdata\.zcode\workspace\default\MyHaruto`
-> （`C:\Users\Willa Lin\.zcode\workspace\default\MyHaruto` 是同一位置的映射路径，构建请走 D 盘）
+# MyHaruto 项目结构设计
+
+本文件回答：**为什么项目这样组织文件？**
+如果你要问"现在做什么"，请看 PROJECT_ROADMAP.md。
+如果你要问"某个功能怎么实现"，请看 TECH.md。
+
+## 一、顶层设计原则
+
+### 原则 1：软件本体与用户数据物理分离
+
+```
+软件本体（仓库/随代码发布）      用户数据（系统目录/随用户走）
+  ├── src/                        ├── %APPDATA%/MyHaruto/data/
+  ├── electron/                   │
+  ├── public/builtin-art/         │   ← 出厂美术
+  └── docs/                       └── my-art/  ← 用户自定义美术
+```
+
+**为什么这样分**：
+- 用户数据永不上传（.gitignore 兜底校验）
+- 用户可自定义美术资产（`my-art/` 覆盖 `builtin-art/`）
+- 升级应用不动用户数据；迁移数据不动应用
+
+**覆盖优先级**：`用户 my-art/` > `应用 public/builtin-art/`
+
+### 原则 2：渲染端按功能域分层
+
+```
+src/
+├── app/        # 应用壳（路由 + 布局组合）
+├── features/   # 功能域（按业务模块切分）
+│   ├── tasks/
+│   ├── pomodoro/
+│   └── ...
+├── shared/     # 跨域共享（域间复用唯一入口）
+└── data/       # 数据层（唯一入口 repository.ts）
+```
+
+**为什么这样分**：
+- **域间禁互 import**（DEV_RULES §1）——防止一个 feature 改坏另一个
+- **复用只走 shared/**——避免"域 A 依赖域 B 内部"的隐性耦合
+- **数据操作走 repository.ts**——渲染端唯一数据入口，组件不碰 IPC
+
+### 原则 3：业务规则单点化
+
+**同一语义只允许一个实现**（DEV_RULES §10）。以任务系统为例：
+
+```
+features/tasks/utils/           # ★ 唯一实现层
+├── taskTree.ts                 # 树操作（rootOf/treeOf/collapsedOf）
+├── taskDelete.ts               # 删除（collectTreeIds）
+├── taskMeta.ts                 # 卡片 meta 行组装
+├── taskSort.ts                 # 排序（唯一实现）
+└── groupPosition.ts            # 组位置（横板单点显示）
+```
+
+**为什么这样分**：
+- 视图组件（横板/看板/右栏）只做**布局适配**
+- 业务逻辑全部下沉 utils/——改一处，全视图生效
+- 审查时 grep 函数名，全库应只有 1 个定义点
+
+### 原则 4：主进程与渲染端职责清晰
+
+```
+主进程（electron/）              渲染端（src/）
+  窗口管理                          React 组件树
+  IPC 委托                          数据 hooks
+  数据读写（store.js/layout.js）    数据仓库（repository.ts）
+```
+
+**为什么这样分**：
+- **渲染端不碰文件系统**——所有数据操作走 IPC 通道
+- **主进程不做业务逻辑**——只做窗口 + 数据读写
+- **桥接层（preload.js）收口**——`window.myharuto` 五通道
+
+### 原则 5：文档按"读的顺序"分层
+
+```
+docs/
+├── HANDBOOK.md          # 1. 新人从这开始
+├── PROJECT_ROADMAP.md   # 2. 去哪（时间/任务导航）
+├── AGENT_STATE.md       # 3. 现在在哪（状态）
+├── CARD_PROTOCOL.md     # 4. 卡怎么管
+├── DEV_RULES.md         # 5. 开发规则
+├── ...
+├── cards/               # 6. 具体任务
+└── archive/             # 7. 历史
+```
+
+**为什么这样分**：新人按顺序读，读完知道"去哪、做什么、什么规则"。每个文件只回答一个问题，不重复。
+
+## 二、目录树（按结构分组）
+
+### 2.1 软件本体
 
 ```
 MyHaruto/
-├── PROJECT_SPEC.md          # 项目说明书（需求基线 v1.0，历史文档；最新功能以 docs/PRD.md 为准）
-├── README.md                # GitHub 门面：简介+技术栈+运行方式
-├── CONTINUE.md              # ★ 新会话/新Agent 接力卡（复制其内容作为第一条消息即可无缝续接）
-├── package.json             # 依赖清单与脚本（dev/build）
-├── vite.config.ts           # 端口锁5173+strictPort（勿动，动了启动链错位）
-├── tsconfig.json / tailwind.config.js / postcss.config.js
-├── index.html               # 界面入口（Vite）
+├── electron/          # 主进程
+│   ├── main.js        # 窗口 + IPC 委托
+│   ├── preload.js     # 桥接（window.myharuto 五通道）
+│   ├── wait-dev.js    # 开发模式启动器
+│   └── data/
+│       ├── store.js   # 读写入口 + 原子写 + 备份
+│       └── layout.js  # 多文件布局 + 迁移 + 降级保护
 │
-├── docs/                    # ★ 文档区（新 Agent 必读）
-│   ├── PRD.md               # 产品需求：定位/布局/每模块功能规格/视觉规范/里程碑状态
-│   ├── TECH.md              # 技术：栈/启动/数据模型/关键机制/开发铁律
-│   ├── STRUCTURE.md         # 本文件：文件地图
-│   ├── DEV_RULES.md         # ★ 开发铁律（目录/数据/规模/禁令/提交/会话边界/排障）
-│   ├── REFACTOR_CARDS.md    # ★ 重构任务卡总集（六阶段+Fix 卡唯一任务来源）
-│   ├── VISUAL_EFFECTS.md    # 主题过渡动效（视觉签名，勿删）
-│   └── HANDBOOK.md          # 新 Agent 上手六步+协作规范
+├── src/               # 渲染端
+│   ├── app/           # 应用壳
+│   ├── features/      # 功能域
+│   ├── shared/        # 跨域共享
+│   ├── data/          # 数据层
+│   └── main.tsx
 │
-├── electron/                # Electron 主进程（Node 侧）
-│   ├── main.js              # 窗口创建 + IPC 委托（数据逻辑已全部移出）
-│   ├── preload.js           # contextBridge 暴露 window.myharuto（db/data 五通道）
-│   ├── data/store.js        # ★ 数据层核心：loadDb/saveDb（原子写）+config.json 数据根+自定义位置+降级保护
-│   ├── data/layout.js       # 多文件布局：8 域读写+迁移三分支+删除留痕 logs/changes.jsonl+AI 模板播种
-│   └── wait-dev.js          # 开发模式：轮询5173就绪后拉起 electron（替代 wait-on）
+├── public/builtin-art/  # 出厂美术
+│   ├── days/            # 重要日插画 ×9
+│   └── town/            # 小镇默认 3D 资产
 │
-├── public/assets/days/      # 重要日插画 PNG ×9（⚠ RF-Clean 更名 builtin-art/days）
-├── public/builtin-art/town/ # （RF-Town-MVP 建）characters/haruto glb+贴图 │ rooms/room1 场景 glb
-├── data/ai/                 # AI 数据域仓库模板（空数组/默认人设，用户数据在 %APPDATA%，永不上传）
-├── scripts/verify-migration.mjs  # 数据迁移校验（npm run verify:data）
-│
-└── src/                     # 界面代码（React 侧，features 分层，RF-P1~P3b）
-    ├── main.tsx             # React 挂载入口
-    ├── App.tsx              # ★ 主帅文件：数据 hooks 编排 + nav API（路由四件套成套同步）
-    │                        #   + 布局组合（L1/L2/MainArea/右栏/弹窗接线）
-    ├── features/ai/         # （M5/M6 待建）chat/agent/memory[useMemoryRecall+useMemoryWrite/entityTag/memoryCondense]/persona
-    ├── global.d.ts          # window.myharuto 类型（db/data 五通道）
-    ├── data/repository.ts   # ★ 渲染端唯一数据入口 loadAll/persist（StorageDriver 接口；M6 记忆签名届时落）
-    ├── data/types.ts        # 数据层类型（DataInfo 等）
-    ├── solarlunar.d.ts      # 农历库类型补丁
-    ├── styles.css           # Tailwind 指令+全局样式+fadeSlideIn 动效（视觉签名）
-    │
-    ├── app/                 # 应用壳（RF-P3b 抽取）
-    │   └── layout/
-    │       ├── L1Sidebar.tsx      # L1 图标导航栏
-    │       ├── L2Sidebar.tsx      # L2 清单树（H1/H2 树+拖拽把手+右键菜单+解散确认）
-    │       ├── MainArea.tsx       # L3 内容区路由 + 右栏详情面板
-    │       ├── SettingsModal.tsx  # 设置弹窗（App 受控开关，草稿态组件内）
-    │       └── Placeholder.tsx    # 未开发模块占位页
-    │
-    ├── features/            # ★ 按功能域分层（域间禁止互 import，见 DEV_RULES §1）
-    │   ├── tasks/           # 任务系统（核心域）
-    │   │   ├── pages/Today.tsx          # 今日页（逾期/今天分组+已完成折叠区）
-    │   │   ├── pages/Tasks.tsx          # 任务页（五分组+NewTaskBar+已完成折叠区）
-    │   │   ├── components/BoardView.tsx       # 看板视图（视图A=H1总览/视图B=H2单标签）
-    │   │   ├── components/BoardColumn.tsx     # 看板列（Section 列+聚合折叠区）
-    │   │   ├── components/TaskCard.tsx        # 看板任务卡（含子任务嵌套/悬空详情）
-    │   │   ├── components/ListTaskCard.tsx    # 列表任务卡（横板共用+DoneFoldSection 折叠区）
-    │   │   ├── components/NewTaskBar.tsx      # 新建任务行（日期+优先级四旗+H2 选择）
-    │   │   ├── components/TaskDetailPanel.tsx # 右栏任务详情（子任务/检查事项/AI留言/动作行）
-    │   │   ├── components/taskMenu.tsx        # 右键九项菜单构建器+优先级件（四视图同源）
-    │   │   ├── components/DateTimePickers.tsx # 日期选择器/提醒/小时滚轮
-    │   │   ├── components/ChecklistRow.tsx    # 检查事项行（勾选/行内编辑/闹钟）
-    │   │   ├── components/SubTagModal.tsx     # H2 标签弹窗+18色板
-    │   │   ├── hooks/useTaskActions.ts        # 任务/清单/检查事项数据变更 (db,setDb)
-    │   │   ├── hooks/useTaskSelectors.ts      # 任务派生数据 (db,selectedId) 纯派生
-    │   │   ├── utils/tree.ts                  # rootOf/isRootAggregated（看板+横板共用）
-    │   │   ├── utils/boardSort.ts             # 排序：日期→优先级→done 沉底→新任务在前
-    │   │   └── types.ts                       # Priority 等域内类型
-    │   ├── pomodoro/
-    │   │   ├── pages/PomodoroPage.tsx         # 专注页（圆环+任务池含子任务+今日统计）
-    │   │   ├── components/PomodoroBar.tsx     # 底部浮动计时条
-    │   │   └── hooks/usePomodoro.ts           # 番茄状态机（pomoCompletingRef 互斥锁）
-    │   ├── calendar/pages/Calendar.tsx        # 月历（周/月双视图、速览添加）
-    │   ├── habits/
-    │   │   ├── pages/Habits.tsx               # 习惯打卡（周/月/年、行内编辑）
-    │   │   └── hooks/useHabits.ts
-    │   ├── stats/pages/Stats.tsx              # 统计（名家色板饼图+竖排热力图+入睡折线）
-    │   └── important-days/
-    │       ├── pages/ImportantDays.tsx        # 重要日（插画卡片+农历+生理期弹窗）
-    │       └── hooks/useImportantDays.ts
-    │
-    └── shared/               # 跨域共享（features 复用唯一入口，见 DEV_RULES §1）
-        ├── components/icons.tsx         # 线性图标库（lucide 风格）
-        ├── components/FloatingMenu.tsx  # 右键浮层菜单（支持二级子菜单）
-        ├── types.ts                     # 全部数据类型（与 db.json 对应）
-        ├── constants.ts                 # DEFAULT_AI_NAME 等全局常量
-        └── utils/id.ts                  # uid() 生成器
+├── docs/              # 文档
+├── scripts/           # 工具脚本
+├── README.md / CHANGELOG.md
+└── package.json / vite.config.ts / tsconfig.json 等
 ```
 
-**运行产物**（.gitignore 已排除，不上传）：
-- `node_modules/` 依赖实体（npm install 复原）
-- `dist/` 打包后的界面（npm run build 生成；双击桌面快捷方式加载的就是它）
+**完整文件清单与职责见 TECH.md §1、§2**（本文件只讲结构原则，不重复枚举）。
 
-**数据文件**（不在仓库，在系统目录）：
-- `%APPDATA%/MyHaruto/data/db.json` 全部用户数据
+### 2.2 features/ 内部结构（每个功能域统一）
+
+```
+features/<域>/
+├── components/    # 视图组件（只做布局适配）
+├── hooks/         # 数据 hooks（db, setDb）
+├── pages/         # 页面组件
+├── utils/         # 业务规则单点（域内唯一实现）
+└── types.ts       # 域内类型
+```
+
+**统一结构的意义**：新功能域进来，照这个骨架建目录即可，不重新讨论布局。
+
+## 三、用户数据目录
+
+```
+%APPDATA%/MyHaruto/data/   # 默认路径，可通过 config.json 更改
+├── manifest.json          # 版本管理
+├── user/                  # 用户资料 + 设置
+├── tasks/                 # 任务系统
+├── habits/                # 习惯
+├── focus-sessions.json    # 番茄钟
+├── important-days.json / period-records.json / sleep-records.json
+├── health/                # 健康（M6 华为同步预留）
+├── ai/                    # AI 域（M5/M6 填充）
+├── town/                  # 小镇（M2.5/M7 填充）
+├── albums/ travel/        # 书影旅游（M8 填充）
+├── my-art/                # 用户自定义美术（覆盖 builtin-art）
+├── logs/                  # 操作日志 + 删除留痕
+└── backups/               # 滚动 7 份
+```
+
+**完整说明见 docs/DATA_LAYOUT.md。**
+
+## 四、关键设计决策速查
+
+| 决策 | 位置 | 为什么 |
+|---|---|---|
+| 域间禁互 import | DEV_RULES §1 | 防跨域耦合 |
+| 数据操作走 repository | DEV_RULES §2 | 渲染端唯一数据入口 |
+| 业务规则单点化 | DEV_RULES §10 | 一份实现，全视图生效 |
+| 软件本体/用户数据分离 | 本文件 §1 原则 1 | 隐私 + 可自定义 |
+| features 统一骨架 | 本文件 §2.2 | 新域零讨论落地 |
+| 主进程/渲染端分离 | 本文件 §1 原则 4 | 职责清晰 |
+
+## 五、相关文件
+
+- 做什么：PROJECT_ROADMAP.md
+- 怎么实现：TECH.md
+- 开发规则：DEV_RULES.md
+- 数据目录细节：DATA_LAYOUT.md
+- 当前状态：AGENT_STATE.md
