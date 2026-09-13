@@ -36,10 +36,10 @@ MyHaruto（Electron + React18 + TS strict + Tailwind + Vite）
 
 ## 未决项
 - 待建文件（HANDBOOK 引用未落地）：
-  □ PROJECT_ROADMAP.md
-  □ TEST_REVIEW_RULES.md
-  □ PLANNER_RULES.md
-  □ WORKFLOW_SOP.md
-  □ VERSION_MIGRATION_v1.md
-  （补完一个划掉一个）
-- 文件翻新进度：HANDBOOK ✅｜AGENT_STATE ⏳｜CONTINUE ⏳
+  ~~□ PROJECT_ROADMAP.md~~ ✅ 已建
+  ~~□ TEST_REVIEW_RULES.md~~ ✅ 已建
+  □ PLANNER_RULES.md ⏳ 挂起（等所有规则定稿后写）
+  ~~□ WORKFLOW_SOP.md~~ ✅ 已建
+  ~~□ VERSION_MIGRATION_v1.md~~ ✅ 已建
+  （剩 PLANNER_RULES 一项）
+- 文件翻新进度：HANDBOOK ✅｜AGENT_STATE ✅｜CONTINUE ✅｜STRUCTURE ✅｜TECH ✅｜PRD ✅｜CARD_PROTOCOL ✅｜TEST_REVIEW_RULES ✅｜WORKFLOW_SOP ✅｜VERSION_MIGRATION_v1 ✅｜PLANNER_RULES ⏳
