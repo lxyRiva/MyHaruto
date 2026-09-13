@@ -1,3 +1,12 @@
+【文件】DEV_RULES.md
+【用途】开发铁律
+【读】开发、测试、规划
+【写】仅规划层
+【上游】CARD_PROTOCOL.md
+【下游】无
+【更新】规则变化时
+【最后更新】2026-09-13
+
 # MyHaruto 开发铁律（全 Agent 必读）
 > 违反任何一条，审查 Agent 直接打回，不进验收。
 
@@ -9,8 +18,7 @@
 - hooks 只放状态与逻辑；纯展示组件不碰 db/handler，数据全走 props。
 
 ## 2. 数据访问
-- P1-P3 阶段：数据变更只允许出现在 App.tsx 与 hooks；页面组件禁直接 setDb/window.myharuto。
-- P4 起：一切数据操作走 src/data/repository.ts，组件与 hooks 禁直接 IPC。
+- 数据操作一律走 src/data/repository.ts，组件与 hooks 禁直接 IPC。
 - localStorage 仅经 shared/hooks/useLocalStorage，key 前缀 mh-，展示态不入库。
   现有 key：mh-detail-panel-width、mh-year-target-{id}、mh-day-style-{id}、
   mh-day-repeat-{id}、mh-day-pinned-{id}、mh-day-lunar-{id}、mh-sidebar
@@ -24,6 +32,7 @@
 ## 3. 代码规模
 - 新文件 ≤500 行、新函数 ≤50 行。存量超标文件（ImportantDays/Habits 等）
   不做全量补课，动到时顺手拆。
+- 例外：3D 组件、ECharts 配置类文件超限须报告规划层批准。
 - 同样逻辑出现 ≥3 处必须提 shared/utils；日期一律 shared/utils/date.ts（P3c 落地后）。
 
 ## 4. 禁令
@@ -32,7 +41,7 @@
 - UI 层禁 emoji（用户数据除外：习惯 icon、H2 标签 emoji）；图标加 icons.tsx。
 - 禁新增 npm 依赖（例外须用户批准）；禁改 vite 端口 5173/strictPort。
   **已批准例外（2026-09-09 用户批）**：`three` + `@react-three/fiber`（RF-Town-MVP 3D 角色展示）；
-  如需 `@react-three/drei` 须再次申请。
+  `@react-three/drei` 待技术文档定稿后另行申请。
 - 左键=详情、右键=菜单，任何层级任务不许分叉。
 
 ## 5. 质量与提交
@@ -49,6 +58,9 @@
 - draggable 与 onClick 不共元素，拖拽用把手模式。
 - 日期只存 YYYY-MM-DD 字符串，比对走本地时区（toISOString 是 UTC，曾致时区 bug）。
 - 主题过渡 transition 是视觉签名（VISUAL_EFFECTS.md），勿删。
+- 置顶双标记：isPinnedGroup（看板读）+ isPinnedToday（横板读），两者独立
+- positionDateOf：横板组位置唯一实现（groupPosition.ts）
+- taskSort：排序唯一实现（含 pinnedGroupFirst 内聚预排）
 
 ## 8. Agent 会话边界（2026-09-06 起强制）
 - 开发/测试/审查必须各开独立会话，禁止同会话兼任多角色。
@@ -73,6 +85,8 @@
 - **施工前反问（2026-09-09，RF-B1 Recent7 漏接事故）**：开发拿到卡后必须先回答「这个语义的全消费面是什么」——逐视图枚举核对；发现卡漏（规格漏列某视图/消费点）立即上报规划层，**禁止照卡盲做**。
 - **接口重构回归（2026-09-09）**：任何接口签名/返回结构变更，必须回归该接口**所有既有消费点**的验收，不接受只测新入口。
 - **附则**：规格撰写禁用"横板/看板"等集合词转写视图清单（须逐个列名）——本条意图已被"施工前反问"覆盖，降为附则。
+- **卡文件 commit 铁律**：每次改卡必须 commit，message 格式 card(<卡名>): <简述>
+- **状态行 5 要素**：状态词 · 版本号 · 轮次 · commit · 证据，缺一无效
 
 ## 11. 工作区边界（2026-09-09 用户令，全程有效）
 - 所有 Agent 会话的工作目录固定为 `D:\Software\Zcode_appdata` 与 `D:\Software\Zcode` 两个目录树。
@@ -80,3 +94,21 @@
   唯一例外：应用自身运行数据的读写按数据层设计走 `%APPDATA%/MyHaruto/`（config.json/data/）。
 - 需要引用外部目录的文件（如美术资产源文件）时：先向用户报告完整路径并征得同意，禁止直接 find/ls 试探。
 - 允许联网（npm 安装、GitHub 推送、GitHub Releases API 等）。
+- 用户本地归档目录 `E:\MyHarutoArchive\` 为例外。
+
+## 12. 卡管理规约
+
+- 卡文件位置：`docs/cards/`
+- 卡命名：`M阶段-V序号-卡名.md`（如 M2-V13-*.md）
+- 卡结构：卡头 6 行 + 当前有效指令 + 迭代日志 + 冻结规则（详见 CARD_PROTOCOL）
+- 状态更新：仅规划层可写，开发/测试只读
+- git 提醒：卡手测通过后，规划层主动问用户"是否 commit"
+- 归档：卡全部 commit + push + tag 后，用户复制到本地归档，规划层从项目树删除
+
+## 13. 3D 资产规约
+- 出厂资产：`public/builtin-art/town/`（随代码发布）
+- 用户自定义：用户数据目录 `my-art/town/`（覆盖默认，其位置应该在用户数据自定义存储的位置）
+- 读取优先级：`my-art/` > `builtin-art/`
+- 模型格式：.glb / .gltf
+- 渲染解耦：CharacterStage 组件 + character-state.json（M2.5 待定，后续可能更改）
+- 技术栈：three + @react-three/fiber（§4 例外，待定，M2.5确定后更新此条）
