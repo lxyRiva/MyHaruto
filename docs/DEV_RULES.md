@@ -46,6 +46,7 @@
 
 ## 5. 质量与提交
 - 三关：tsc --noEmit 零错误 → npm run build 成功 → 用户验收 → commit；push 需授权。
+- **红线（2026-09-11 用户令）**：任何 git add / commit / push 必须用户**明确说"批准"或"commit"**才能执行。"读回执""文件已保存""贴 diff""贴状态"都不等于批准。每次 git 操作前，规划层先回执：「准备执行：[add/commit/push] [文件列表] [message]，是否批准？」收到"批准"后才能执行。违反=红线。
 - 一卡一 commit（子卡各一），禁跨卡混改。格式：refactor(P1): xxx / feat(P6a): xxx / fix: xxx。
 - 搬移与修改分开：纯搬移 commit 的 diff 不得含逻辑变更；新文件直接落 features/ 最终位置。
 
